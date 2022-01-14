@@ -1,0 +1,12 @@
+#![allow(unstable_name_collisions)]
+#![warn(clippy::pedantic)]
+#![forbid(unused_must_use)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::missing_errors_doc)]
+
+pub use entity::{Create, Delete, Entity, Update};
+pub use manager::Manager;
+
+mod entity;
+pub mod manager;

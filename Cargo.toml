@@ -1,0 +1,2 @@
+[workspace]
+members = ["foil", "foil-macros"]
