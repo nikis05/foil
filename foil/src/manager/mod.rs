@@ -14,6 +14,7 @@ mod impls {
 }
 
 pub use impls::log::LogManager;
+#[cfg(all(feature = "test-manager", feature = "sqlite"))]
 pub use impls::mock::MockManager;
 
 pub trait Manager<'m, DB: Database>: Send {
