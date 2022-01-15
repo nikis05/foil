@@ -5,7 +5,7 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::missing_errors_doc)]
 
-pub use entity::{Create, Delete, Entity, Update};
+pub use entity::{Create, Delete, Entity, Field, Update};
 pub use manager::Manager;
 
 mod entity;
