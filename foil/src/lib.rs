@@ -8,5 +8,5 @@
 pub use entity::{Create, Delete, Entity, Field, Update};
 pub use manager::Manager;
 
-mod entity;
+pub mod entity;
 pub mod manager;
