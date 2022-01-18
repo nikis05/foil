@@ -348,7 +348,7 @@ pub enum RecordError {
     #[error("error decoding column {index}: {source}")]
     ColumnDecode {
         index: String,
-        source: Box<dyn std::error::Error>,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 
