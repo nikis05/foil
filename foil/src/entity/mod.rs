@@ -192,7 +192,7 @@ pub trait Create<DB: Database>: Entity<DB> + Send {
 }
 
 #[derive(Debug, Error)]
-pub enum CreateError<E: Error> {
+pub enum CreateError<E: Error + Send + Sync> {
     #[error(transparent)]
     Manager(E),
     #[error(transparent)]
@@ -271,13 +271,13 @@ pub enum Field<T> {
     Omit,
 }
 
-pub struct Selection<'m, E: Error, T: FromRecord<DB>, DB: Database> {
+pub struct Selection<'m, E: Error + Send + Sync, T: FromRecord<DB>, DB: Database> {
     stream: BoxStream<'m, Result<Record<DB>, E>>,
     marker: PhantomData<fn() -> T>,
 }
 
 #[derive(Debug, Error)]
-pub enum SelectError<E: Error> {
+pub enum SelectError<E: Error + Send + Sync> {
     #[error(transparent)]
     Manager(E),
     #[error(transparent)]
@@ -285,14 +285,14 @@ pub enum SelectError<E: Error> {
 }
 
 #[derive(Debug, Error)]
-pub enum SelectOneError<E: Error> {
+pub enum SelectOneError<E: Error + Send + Sync> {
     #[error(transparent)]
     Select(#[from] SelectError<E>),
     #[error("query returned less rows than expected")]
     RowNotFound,
 }
 
-impl<'m, T: FromRecord<DB>, DB: Database, E: Error + 'm> Selection<'m, E, T, DB> {
+impl<'m, T: FromRecord<DB>, DB: Database, E: Error + Send + Sync + 'm> Selection<'m, E, T, DB> {
     fn new(stream: BoxStream<'m, Result<Record<DB>, E>>) -> Self {
         Self {
             stream,
