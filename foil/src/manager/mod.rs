@@ -18,7 +18,7 @@ pub use impls::log::LogManager;
 pub use impls::mock::MockManager;
 
 pub trait Manager<'m, DB: Database>: Send {
-    type Error: Error + Send + Sync + 'm;
+    type Error: Error + Send + Sync + 'static;
 
     fn select<'o, 'q>(
         self,
