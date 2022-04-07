@@ -19,7 +19,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
 {
     type Error = Error<M::Error>;
 
-    fn select<'o, 'q>(
+    fn select<'q, 'o>(
         mut self,
         query: crate::manager::SelectQuery<'q, DB>,
     ) -> futures::stream::BoxStream<'o, Result<crate::manager::Record<DB>, Self::Error>>
@@ -34,7 +34,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         Box::pin(self.inner.select(query).map_err(Error::Inner))
     }
 
-    fn count<'o, 'q>(
+    fn count<'q, 'o>(
         mut self,
         query: crate::manager::CountQuery<'q, DB>,
     ) -> futures::future::BoxFuture<'o, Result<u32, Self::Error>>
@@ -51,7 +51,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         Box::pin(self.inner.count(query).map_err(Error::Inner))
     }
 
-    fn insert<'o, 'q>(
+    fn insert<'q, 'o>(
         mut self,
         query: crate::manager::InsertQuery<'q, DB>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>
@@ -66,7 +66,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         Box::pin(self.inner.insert(query).map_err(Error::Inner))
     }
 
-    fn insert_returning<'o, 'q>(
+    fn insert_returning<'q, 'o>(
         mut self,
         query: crate::manager::InsertReturningQuery<'q, DB>,
     ) -> futures::stream::BoxStream<'o, Result<crate::manager::Record<DB>, Self::Error>>
@@ -81,7 +81,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         Box::pin(self.inner.insert_returning(query).map_err(Error::Inner))
     }
 
-    fn update<'o, 'q>(
+    fn update<'q, 'o>(
         mut self,
         query: crate::manager::UpdateQuery<'q, DB>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>
@@ -96,7 +96,7 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         Box::pin(self.inner.update(query).map_err(Error::Inner))
     }
 
-    fn delete<'o, 'q>(
+    fn delete<'q, 'o>(
         mut self,
         query: crate::manager::DeleteQuery<'q, DB>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>

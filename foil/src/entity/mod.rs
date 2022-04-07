@@ -1,7 +1,7 @@
 use crate::manager::{
-    Condition, CountQuery, DeleteQuery, FindOperator, FromRecord, InsertQuery,
-    InsertReturningQuery, IntoCondition, Manager, Order, Record, RecordError, SelectQuery,
-    ToValues, UpdateQuery, Value,
+    CountQuery, DeleteQuery, FindOperator, FromRecord, InsertQuery, InsertReturningQuery,
+    IntoSelector, Manager, OrderBy, Record, RecordError, SelectQuery, Selector, ToInputRecord,
+    UpdateQuery, Value,
 };
 use futures::{
     future::BoxFuture, stream::BoxStream, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
@@ -10,7 +10,6 @@ use sqlx::Database;
 use std::error::Error;
 use std::marker::PhantomData;
 use thiserror::Error;
-use vec1::{vec1, Vec1};
 
 #[cfg(all(
     test,
@@ -22,15 +21,15 @@ use vec1::{vec1, Vec1};
 mod test;
 
 pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
-    type Id: Send + Value<DB>;
-    type Cond: Send + IntoCondition<DB>;
-    type Col: Send + Col;
+    type Col: Col + Send;
+    type Id: for<'q> Value<'q, DB> + Send;
+    type Selector<'q>: IntoSelector<'q, DB> + Send;
 
     fn table_name() -> &'static str;
 
-    fn id_col_name() -> &'static str;
+    fn col_names() -> &'static [&'static str];
 
-    fn col_names() -> Vec1<&'static str>;
+    fn id_col_name() -> &'static str;
 
     fn id(&self) -> Self::Id;
 
@@ -38,14 +37,14 @@ pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
         manager: M,
         id: Self::Id,
     ) -> BoxFuture<'m, Result<Self, SelectOneError<M::Error>>> {
-        let mut cond = Condition::default();
-        cond.add_col(Self::id_col_name(), FindOperator::Eq(Box::new(id)));
+        let mut selector = Selector::new();
+        selector.add_col(Self::id_col_name(), FindOperator::Eq(Box::new(id)));
 
         Box::pin(
             Selection::<_, Self, DB>::new(manager.select(SelectQuery {
                 table_name: Self::table_name(),
                 col_names: Self::col_names(),
-                conds: vec1![cond],
+                selectors: vec![selector],
                 order_by: None,
                 offset: None,
                 limit: None,
@@ -54,13 +53,13 @@ pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
         )
     }
 
-    fn find<'m, M: Manager<'m, DB>>(
+    fn find<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
-    ) -> Selection<'m, M::Error, Self, DB> {
-        Self::find_with(
+        selectors: Vec<Self::Selector<'q>>,
+    ) -> Selection<'o, M::Error, Self, DB> {
+        Self::find_with_options(
             manager,
-            conds,
+            selectors,
             FindOptions {
                 order_by: None,
                 offset: None,
@@ -69,48 +68,55 @@ pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
         )
     }
 
-    fn find_with<'m, M: Manager<'m, DB>>(
+    fn find_with_options<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
+        selectors: Vec<Self::Selector<'q>>,
         options: FindOptions<Self::Col>,
-    ) -> Selection<'m, M::Error, Self, DB> {
+    ) -> Selection<'o, M::Error, Self, DB> {
         Selection::new(
             manager.select(SelectQuery {
                 table_name: Self::table_name(),
                 col_names: Self::col_names(),
-                conds: conds.mapped(|cond| cond.into_condition()),
-                order_by: options
-                    .order_by
-                    .map(|order_by| (order_by.cols.mapped(|col| col.as_str()), order_by.order)),
+                selectors: selectors
+                    .into_iter()
+                    .map(IntoSelector::into_selector)
+                    .collect(),
+                order_by: options.order_by.map(|order_by| OrderBy {
+                    order: order_by.order,
+                    cols: order_by.cols.iter().map(Col::as_str).collect(),
+                }),
                 offset: options.offset,
                 limit: options.limit,
             }),
         )
     }
 
-    fn count<'m, M: Manager<'m, DB>>(
+    fn count<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
-    ) -> BoxFuture<'m, Result<u32, M::Error>>
+        selectors: Vec<Self::Selector<'q>>,
+    ) -> BoxFuture<'o, Result<u32, M::Error>>
     where
         for<'a> u32: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
     {
         manager.count(CountQuery {
             table_name: Self::table_name(),
-            conds: conds.mapped(|cond| cond.into_condition()),
+            selectors: selectors
+                .into_iter()
+                .map(IntoSelector::into_selector)
+                .collect(),
         })
     }
 
-    fn exists<'m, M: Manager<'m, DB>>(
+    fn exists<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
-    ) -> BoxFuture<'m, Result<bool, M::Error>>
+        selectors: Vec<Self::Selector<'q>>,
+    ) -> BoxFuture<'o, Result<bool, M::Error>>
     where
         for<'a> u32: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
     {
-        Box::pin(Self::count(manager, conds).map_ok(|count| count != 0))
+        Box::pin(Self::count(manager, selectors).map_ok(|count| count != 0))
     }
 }
 
@@ -120,43 +126,35 @@ pub struct FindOptions<C> {
     pub limit: Option<u32>,
 }
 
-pub struct OrderBy<C> {
-    pub cols: Vec1<C>,
-    pub order: Order,
-}
-
 pub trait Create<DB: Database>: Entity<DB> + Send {
-    type Input: for<'m> From<&'m Self> + ToValues<DB> + Send + Sync;
+    type Input<'q>: From<&'q Self> + ToInputRecord<'q, DB> + Send + Sync;
 
-    fn generated_cols() -> Vec1<&'static str>;
+    fn generated_col_names() -> &'static [&'static str];
 
-    fn construct(input: &Self::Input, generated: &Record<DB>) -> Result<Self, RecordError>;
+    fn construct<'q>(input: &Self::Input<'q>, generated: &Record<DB>) -> Result<Self, RecordError>;
 
-    fn create<'m, M: Manager<'m, DB>>(
+    fn create<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        input: Self::Input,
-    ) -> BoxFuture<'m, Result<Self, CreateError<M::Error>>> {
-        Box::pin(Self::create_many(manager, vec1![input]).map_ok(|mut many| many.pop().unwrap()))
+        input: Self::Input<'q>,
+    ) -> BoxFuture<'o, Result<Self, CreateError<M::Error>>> {
+        Box::pin(Self::create_many(manager, vec![input]).map_ok(|mut many| many.pop().unwrap()))
     }
 
-    fn create_many<'m, M: Manager<'m, DB>>(
+    fn create_many<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        inputs: Vec1<Self::Input>,
-    ) -> BoxFuture<'m, Result<Vec<Self>, CreateError<M::Error>>> {
+        inputs: Vec<Self::Input<'q>>,
+    ) -> BoxFuture<'o, Result<Vec<Self>, CreateError<M::Error>>> {
         Box::pin(
             manager
                 .insert_returning(InsertReturningQuery {
                     insert_query: InsertQuery {
                         table_name: Self::table_name(),
-                        col_names: Self::col_names(),
                         values: inputs
                             .iter()
-                            .map(|input| input.to_values())
-                            .collect::<Vec<_>>()
-                            .try_into()
-                            .unwrap(),
+                            .map(ToInputRecord::to_input_record)
+                            .collect::<Vec<_>>(),
                     },
-                    returning_cols: Self::generated_cols(),
+                    returning_cols: Self::generated_col_names(),
                 })
                 .try_collect::<Vec<_>>()
                 .map(move |result| match result {
@@ -175,18 +173,20 @@ pub trait Create<DB: Database>: Entity<DB> + Send {
         )
     }
 
-    fn persist<'m, M: Manager<'m, DB>>(&self, manager: M) -> BoxFuture<'m, Result<(), M::Error>> {
-        Self::insert(manager, vec1![self.into()])
+    fn persist<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
+        &'q self,
+        manager: M,
+    ) -> BoxFuture<'o, Result<(), M::Error>> {
+        Self::insert(manager, vec![self.into()])
     }
 
-    fn insert<'m, M: Manager<'m, DB>>(
+    fn insert<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        inputs: Vec1<Self::Input>,
-    ) -> BoxFuture<'m, Result<(), M::Error>> {
+        inputs: Vec<Self::Input<'q>>,
+    ) -> BoxFuture<'o, Result<(), M::Error>> {
         manager.insert(InsertQuery {
             table_name: Self::table_name(),
-            col_names: Self::col_names(),
-            values: inputs.mapped(|input| input.to_values()),
+            values: inputs.iter().map(ToInputRecord::to_input_record).collect(),
         })
     }
 }
@@ -202,24 +202,27 @@ pub enum CreateError<E: Error + Send + Sync> {
 }
 
 pub trait Update<DB: Database>: Entity<DB> + Send {
-    type Patch: ToValues<DB> + Send + Sync;
+    type Patch<'q>: ToInputRecord<'q, DB> + Send + Sync;
 
-    fn apply_patch(&mut self, patch: Self::Patch);
+    fn apply_patch(&mut self, patch: Self::Patch<'_>);
 
-    fn patch<'e, 'm: 'e, M: Manager<'m, DB>>(
+    fn patch<'m: 'o, 'q: 'o, 'e: 'o, 'o, M: Manager<'m, DB>>(
         &'e mut self,
         manager: M,
-        patch: Self::Patch,
-    ) -> BoxFuture<'e, Result<(), M::Error>> {
-        let mut cond = Condition::default();
-        cond.add_col(Self::id_col_name(), FindOperator::Eq(Box::new(self.id())));
+        patch: Self::Patch<'q>,
+    ) -> BoxFuture<'o, Result<(), M::Error>> {
+        let mut selector = Selector::new();
+        selector.add_col(
+            Self::id_col_name(),
+            FindOperator::Eq(Box::new(self.id()) as Box<dyn Value<'q, _>>),
+        );
 
         Box::pin(
             manager
                 .update(UpdateQuery {
                     table_name: Self::table_name(),
-                    conds: vec1![cond],
-                    new_values: patch.to_values(),
+                    selectors: vec![selector],
+                    new_values: patch.to_input_record(),
                 })
                 .and_then(|_| async {
                     self.apply_patch(patch);
@@ -228,41 +231,47 @@ pub trait Update<DB: Database>: Entity<DB> + Send {
         )
     }
 
-    fn update<'m, M: Manager<'m, DB>>(
+    fn update<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
-        patch: Self::Patch,
-    ) -> BoxFuture<'m, Result<(), M::Error>> {
+        selectors: Vec<Self::Selector<'q>>,
+        patch: Self::Patch<'q>,
+    ) -> BoxFuture<'o, Result<(), M::Error>> {
         manager.update(UpdateQuery {
             table_name: Self::table_name(),
-            conds: conds.mapped(|cond| cond.into_condition()),
-            new_values: patch.to_values(),
+            selectors: selectors
+                .into_iter()
+                .map(IntoSelector::into_selector)
+                .collect(),
+            new_values: patch.to_input_record(),
         })
     }
 }
 
 pub trait Delete<DB: Database>: Entity<DB> {
     fn remove<'m, M: Manager<'m, DB>>(&self, manager: M) -> BoxFuture<'m, Result<(), M::Error>> {
-        let mut cond = Condition::default();
-        cond.add_col(Self::id_col_name(), FindOperator::Eq(Box::new(self.id())));
+        let mut selector = Selector::new();
+        selector.add_col(Self::id_col_name(), FindOperator::Eq(Box::new(self.id())));
         manager.delete(DeleteQuery {
             table_name: Self::table_name(),
-            conds: vec1![cond],
+            selectors: vec![selector],
         })
     }
 
-    fn delete<'m, M: Manager<'m, DB>>(
+    fn delete<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
-        conds: Vec1<Self::Cond>,
-    ) -> BoxFuture<'m, Result<(), M::Error>> {
+        selectors: Vec<Self::Selector<'q>>,
+    ) -> BoxFuture<'o, Result<(), M::Error>> {
         manager.delete(DeleteQuery {
             table_name: Self::table_name(),
-            conds: conds.mapped(|cond| cond.into_condition()),
+            selectors: selectors
+                .into_iter()
+                .map(IntoSelector::into_selector)
+                .collect(),
         })
     }
 }
 
-pub trait Col {
+pub trait Col: Copy {
     fn as_str(&self) -> &'static str;
 }
 
@@ -305,7 +314,7 @@ impl<'m, T: FromRecord<DB>, DB: Database, E: Error + Send + Sync + 'm> Selection
             .try_next()
             .await
             .map_err(SelectError::Manager)?
-            .map(|record| T::from_record(&record).map_err(|e| e.into()))
+            .map(|record| T::from_record(&record).map_err(Into::into))
             .transpose()
     }
 
@@ -313,6 +322,7 @@ impl<'m, T: FromRecord<DB>, DB: Database, E: Error + Send + Sync + 'm> Selection
         self.optional().await?.ok_or(SelectOneError::RowNotFound)
     }
 
+    #[allow(clippy::must_use_candidate)]
     pub fn stream(self) -> BoxStream<'m, Result<T, SelectError<E>>> {
         Box::pin(self.stream.map(|result| match result {
             Ok(record) => Ok(T::from_record(&record)?),

@@ -1,43 +1,61 @@
 use crate::manager::{
-    display::{format_conds, WithBindParameters},
-    Condition, CountQuery, DeleteQuery, FindOperator, InsertQuery, InsertReturningQuery, Order,
-    SelectQuery, UpdateQuery, Values,
+    display::{format_selectors, WithBindParameters},
+    CountQuery, DeleteQuery, FindOperator, InputRecord, InsertQuery, InsertReturningQuery, Order,
+    OrderBy, SelectQuery, Selector, UpdateQuery, Value,
 };
 use insta::assert_snapshot;
 use sqlx::{Mssql, Postgres, Sqlite};
-use vec1::vec1;
 
-mod conds {
-    use crate::manager::Value;
-
+mod selectors {
     use super::*;
 
     #[test]
-    fn empty_cond() {
+    fn no_selectors() {
         let mut output = String::new();
 
-        let mut cond1 = Condition::<Postgres>::default();
-        cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
-        let cond2 = Condition::default();
+        format_selectors::<Postgres, _>(&[], &mut Postgres::parameter_factory(), &mut output)
+            .unwrap();
 
-        format_conds(
+        assert_snapshot!(output, @" WHERE <empty list>");
+    }
+
+    #[test]
+    fn single_empty_selector() {
+        let mut output = String::new();
+
+        let cond = Selector::<Postgres>::default();
+
+        format_selectors(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+
+        assert_snapshot!(output, @"");
+    }
+
+    #[test]
+    fn empty_selector() {
+        let mut output = String::new();
+
+        let mut cond1 = Selector::<Postgres>::default();
+        cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let cond2 = Selector::<Postgres>::default();
+
+        format_selectors(
             &[cond1, cond2],
             &mut Postgres::parameter_factory(),
             &mut output,
         )
         .unwrap();
 
-        assert_snapshot!(output, @"");
+        assert_snapshot!(output, @r###" WHERE ("col1" = $1) OR (<empty list>)"###);
     }
 
     #[test]
     fn eq() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col("col", FindOperator::Eq(Box::new(1)));
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" = $1"###);
     }
@@ -46,10 +64,10 @@ mod conds {
     fn eq_null() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col", FindOperator::Eq(Box::new(Option::<i32>::None)));
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col("col", FindOperator::Eq(Box::new(Option::<i32>::None)));
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IS NULL"###);
     }
@@ -58,10 +76,10 @@ mod conds {
     fn ne() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col", FindOperator::Ne(Box::new(1)));
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col("col", FindOperator::Ne(Box::new(1)));
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" != $1"###);
     }
@@ -70,10 +88,10 @@ mod conds {
     fn ne_null() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col", FindOperator::Ne(Box::new(Option::<i32>::None)));
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col("col", FindOperator::Ne(Box::new(Option::<i32>::None)));
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IS NOT NULL"###);
     }
@@ -82,17 +100,13 @@ mod conds {
     fn in_() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col(
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col(
             "col",
-            FindOperator::In(vec1![
-                Box::new(1) as Box<dyn Value<Postgres>>,
-                Box::new(2),
-                Box::new(3)
-            ]),
+            FindOperator::In(vec![Box::new(1), Box::new(2), Box::new(3)]),
         );
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IN ($1, $2, $3)"###);
     }
@@ -101,18 +115,18 @@ mod conds {
     fn in_with_null() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col(
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col(
             "col",
-            FindOperator::In(vec1![
-                Box::new(Some(1)) as Box<dyn Value<Postgres>>,
+            FindOperator::In(vec![
+                Box::new(Some(1)),
                 Box::new(Some(2)),
                 Box::new(Option::<i32>::None),
                 Box::new(Option::<i32>::None),
             ]),
         );
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IN ($1, $2) OR "col" IS NULL"###);
     }
@@ -121,17 +135,13 @@ mod conds {
     fn not_in() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col(
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col(
             "col",
-            FindOperator::NotIn(vec1![
-                Box::new(1) as Box<dyn Value<Postgres>>,
-                Box::new(2),
-                Box::new(3)
-            ]),
+            FindOperator::NotIn(vec![Box::new(1), Box::new(2), Box::new(3)]),
         );
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" NOT IN ($1, $2, $3)"###);
     }
@@ -140,18 +150,18 @@ mod conds {
     fn not_in_with_null() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col(
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col(
             "col",
-            FindOperator::NotIn(vec1![
-                Box::new(Some(1)) as Box<dyn Value<Postgres>>,
+            FindOperator::NotIn(vec![
+                Box::new(Some(1)),
                 Box::new(Some(2)),
                 Box::new(Option::<i32>::None),
                 Box::new(Option::<i32>::None),
             ]),
         );
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" NOT IN ($1, $2) AND "col" IS NOT NULL"###);
     }
@@ -160,26 +170,26 @@ mod conds {
     fn multiple_cols() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
-        cond.add_col("col2", FindOperator::Eq(Box::new(2)));
+        let mut selector = Selector::<Postgres>::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
+        selector.add_col("col2", FindOperator::Eq(Box::new(2)));
 
-        format_conds(&[cond], &mut Postgres::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Postgres::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE ("col1" = $1) AND ("col2" = $2)"###);
     }
 
     #[test]
-    fn multiple_conds() {
+    fn multiple_selectors() {
         let mut output = String::new();
 
-        let mut cond1 = Condition::<Postgres>::default();
+        let mut cond1 = Selector::<Postgres>::default();
         cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let mut cond2 = Condition::default();
+        let mut cond2 = Selector::default();
         cond2.add_col("col2", FindOperator::Eq(Box::new(2)));
 
-        format_conds(
+        format_selectors(
             &[cond1, cond2],
             &mut Postgres::parameter_factory(),
             &mut output,
@@ -193,17 +203,17 @@ mod conds {
     fn sqlite_mysql_params() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Sqlite>::default();
-        cond.add_col(
+        let mut selector = Selector::<Sqlite>::default();
+        selector.add_col(
             "col",
-            FindOperator::In(vec1![
+            FindOperator::In(vec![
                 Box::new(1) as Box<dyn Value<Sqlite>>,
                 Box::new(2),
-                Box::new(3)
+                Box::new(3),
             ]),
         );
 
-        format_conds(&[cond], &mut Sqlite::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Sqlite::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IN (?, ?, ?)"###);
     }
@@ -212,17 +222,17 @@ mod conds {
     fn mssql_params() {
         let mut output = String::new();
 
-        let mut cond = Condition::<Mssql>::default();
-        cond.add_col(
+        let mut selector = Selector::<Mssql>::default();
+        selector.add_col(
             "col",
-            FindOperator::In(vec1![
+            FindOperator::In(vec![
                 Box::new(1) as Box<dyn Value<Mssql>>,
                 Box::new(2),
-                Box::new(3)
+                Box::new(3),
             ]),
         );
 
-        format_conds(&[cond], &mut Mssql::parameter_factory(), &mut output).unwrap();
+        format_selectors(&[selector], &mut Mssql::parameter_factory(), &mut output).unwrap();
 
         assert_snapshot!(output, @r###" WHERE "col" IN (@P1, @P2, @P3)"###);
     }
@@ -231,29 +241,23 @@ mod conds {
     fn combined() {
         let mut output = String::new();
 
-        let mut cond1 = Condition::<Postgres>::default();
+        let mut cond1 = Selector::<Postgres>::default();
         cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
         cond1.add_col("col2", FindOperator::Eq(Box::new(Option::<i32>::None)));
         cond1.add_col(
             "col3",
-            FindOperator::In(vec1![
-                Box::new(2) as Box<dyn Value<Postgres>>,
-                Box::new(Option::<i32>::None)
-            ]),
+            FindOperator::In(vec![Box::new(2), Box::new(Option::<i32>::None)]),
         );
 
-        let mut cond2 = Condition::<Postgres>::default();
+        let mut cond2 = Selector::<Postgres>::default();
         cond2.add_col("col1", FindOperator::Ne(Box::new(1)));
         cond2.add_col("col2", FindOperator::Ne(Box::new(Option::<i32>::None)));
         cond2.add_col(
             "col3",
-            FindOperator::NotIn(vec1![
-                Box::new(2) as Box<dyn Value<Postgres>>,
-                Box::new(Option::<i32>::None),
-            ]),
+            FindOperator::NotIn(vec![Box::new(2), Box::new(Option::<i32>::None)]),
         );
 
-        format_conds(
+        format_selectors(
             &[cond1, cond2],
             &mut Postgres::parameter_factory(),
             &mut output,
@@ -265,19 +269,17 @@ mod conds {
 }
 
 mod select_query {
-    use crate::manager::Value;
-
     use super::*;
 
     #[test]
     fn normal() {
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond],
+            col_names: &["col1", "col2"],
+            selectors: vec![selector],
             order_by: None,
             offset: None,
             limit: None,
@@ -287,34 +289,35 @@ mod select_query {
     }
 
     #[test]
-    fn empty_cond() {
-        let mut cond1 = Condition::<Postgres>::default();
-        cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
+    fn no_cols() {
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let cond2 = Condition::<Postgres>::default();
-
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond1, cond2],
+            col_names: &[],
+            selectors: vec![selector],
             order_by: None,
             offset: None,
             limit: None,
         };
 
-        assert_snapshot!(query.to_string(), @r###"SELECT "col1", "col2" FROM "table""###);
+        assert_snapshot!(query.to_string(), @r###"SELECT <empty list> FROM "table" WHERE "col1" = $1"###);
     }
 
     #[test]
     fn order_by() {
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond],
-            order_by: Some((vec1!["col1", "col2"], Order::Asc)),
+            col_names: &["col1", "col2"],
+            selectors: vec![selector],
+            order_by: Some(OrderBy {
+                order: Order::Asc,
+                cols: vec!["col1", "col2"],
+            }),
             offset: None,
             limit: None,
         };
@@ -324,13 +327,13 @@ mod select_query {
 
     #[test]
     fn skip() {
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond],
+            col_names: &["col1", "col2"],
+            selectors: vec![selector],
             order_by: None,
             offset: Some(3),
             limit: None,
@@ -341,13 +344,13 @@ mod select_query {
 
     #[test]
     fn take() {
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond],
+            col_names: &["col1", "col2"],
+            selectors: vec![selector],
             order_by: None,
             offset: None,
             limit: Some(3),
@@ -358,33 +361,30 @@ mod select_query {
 
     #[test]
     fn combined() {
-        let mut cond1 = Condition::<Postgres>::default();
+        let mut cond1 = Selector::default();
         cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
         cond1.add_col("col2", FindOperator::Eq(Box::new(Option::<i32>::None)));
         cond1.add_col(
             "col3",
-            FindOperator::In(vec1![
-                Box::new(2) as Box<dyn Value<Postgres>>,
-                Box::new(Option::<i32>::None)
-            ]),
+            FindOperator::In(vec![Box::new(2), Box::new(Option::<i32>::None)]),
         );
 
-        let mut cond2 = Condition::<Postgres>::default();
+        let mut cond2 = Selector::default();
         cond2.add_col("col1", FindOperator::Ne(Box::new(1)));
         cond2.add_col("col2", FindOperator::Ne(Box::new(Option::<i32>::None)));
         cond2.add_col(
             "col3",
-            FindOperator::NotIn(vec1![
-                Box::new(2) as Box<dyn Value<Postgres>>,
-                Box::new(Option::<i32>::None)
-            ]),
+            FindOperator::NotIn(vec![Box::new(2), Box::new(Option::<i32>::None)]),
         );
 
-        let query = SelectQuery {
+        let query = SelectQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            conds: vec1![cond1, cond2],
-            order_by: Some((vec1!["col1", "col2"], Order::Asc)),
+            col_names: &["col1", "col2"],
+            selectors: vec![cond1, cond2],
+            order_by: Some(OrderBy {
+                order: Order::Asc,
+                cols: vec!["col1", "col2"],
+            }),
             offset: Some(3),
             limit: Some(5),
         };
@@ -398,29 +398,15 @@ mod count_query {
 
     #[test]
     fn normal() {
-        let mut cond = Condition::<Postgres>::default();
-        cond.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selector = Selector::default();
+        selector.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let query = CountQuery {
+        let query = CountQuery::<Postgres> {
             table_name: "table",
-            conds: vec1![cond],
+            selectors: vec![selector],
         };
 
         assert_snapshot!(query.to_string(), @r###"SELECT COUNT (*) AS "cnt" FROM "table" WHERE "col1" = $1"###);
-    }
-
-    #[test]
-    fn empty_cond() {
-        let mut cond1 = Condition::<Postgres>::default();
-        cond1.add_col("col1", FindOperator::Eq(Box::new(1)));
-        let cond2 = Condition::default();
-
-        let query = CountQuery {
-            table_name: "table",
-            conds: vec1![cond1, cond2],
-        };
-
-        assert_snapshot!(query.to_string(), @r###"SELECT COUNT (*) AS "cnt" FROM "table""###);
     }
 }
 
@@ -429,32 +415,53 @@ mod insert_query {
 
     #[test]
     fn normal() {
-        let mut values = Values::<Postgres>::default();
+        let mut values = InputRecord::default();
         values.add_col("col1", Box::new(1));
 
-        let query = InsertQuery {
+        let query = InsertQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1"],
-            values: vec1![values],
+            values: vec![values],
         };
 
         assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1") VALUES ($1)"###);
     }
 
     #[test]
+    fn no_cols() {
+        let mut values = InputRecord::default();
+        values.add_col("col1", Box::new(1));
+
+        let query = InsertQuery::<Postgres> {
+            table_name: "table",
+            values: vec![values],
+        };
+
+        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1") VALUES ($1)"###);
+    }
+
+    #[test]
+    fn no_values() {
+        let query = InsertQuery::<Postgres> {
+            table_name: "table",
+            values: vec![],
+        };
+
+        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" (<empty list>) VALUES <empty list>"###);
+    }
+
+    #[test]
     fn multiple_values() {
-        let mut values1 = Values::<Postgres>::default();
+        let mut values1 = InputRecord::default();
         values1.add_col("col1", Box::new(1));
         values1.add_col("col2", Box::new(1));
 
-        let mut values2 = Values::<Postgres>::default();
+        let mut values2 = InputRecord::default();
         values2.add_col("col1", Box::new(1));
         values2.add_col("col2", Box::new(1));
 
-        let query = InsertQuery {
+        let query = InsertQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2"],
-            values: vec1![values1, values2],
+            values: vec![values1, values2],
         };
 
         assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1", "col2") VALUES ($1, $2), ($3, $4)"###);
@@ -462,21 +469,22 @@ mod insert_query {
 
     #[test]
     fn values_with_different_column_sets() {
-        let mut values1 = Values::<Postgres>::default();
+        let mut values1 = InputRecord::default();
         values1.add_col("col1", Box::new(1));
         values1.add_col("col2", Box::new(1));
 
-        let mut values2 = Values::<Postgres>::default();
+        let mut values2 = InputRecord::default();
         values2.add_col("col2", Box::new(1));
         values2.add_col("col3", Box::new(1));
 
-        let query = InsertQuery {
+        let values3 = InputRecord::default();
+
+        let query = InsertQuery::<Postgres> {
             table_name: "table",
-            col_names: vec1!["col1", "col2", "col3"],
-            values: vec1![values1, values2],
+            values: vec![values1, values2, values3],
         };
 
-        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1", "col2", "col3") VALUES ($1, $2, DEFAULT), (DEFAULT, $3, $4)"###);
+        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1", "col2", "col3") VALUES ($1, $2, DEFAULT), (DEFAULT, $3, $4), (DEFAULT, DEFAULT, DEFAULT)"###);
     }
 }
 
@@ -485,19 +493,34 @@ mod insert_returning_query {
 
     #[test]
     fn normal() {
-        let mut values = Values::<Postgres>::default();
+        let mut values = InputRecord::default();
         values.add_col("col1", Box::new(1));
 
-        let query = InsertReturningQuery {
+        let query = InsertReturningQuery::<Postgres> {
             insert_query: InsertQuery {
                 table_name: "table",
-                col_names: vec1!["col1", "col2"],
-                values: vec1![values],
+                values: vec![values],
             },
-            returning_cols: vec1!["col1", "col2"],
+            returning_cols: &["col1", "col2"],
         };
 
-        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1", "col2") VALUES ($1, DEFAULT) RETURNING "col1", "col2""###);
+        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1") VALUES ($1) RETURNING "col1", "col2""###);
+    }
+
+    #[test]
+    fn no_returning() {
+        let mut values = InputRecord::default();
+        values.add_col("col1", Box::new(1));
+
+        let query = InsertReturningQuery::<Postgres> {
+            insert_query: InsertQuery {
+                table_name: "table",
+                values: vec![values],
+            },
+            returning_cols: &[],
+        };
+
+        assert_snapshot!(query.to_string(), @r###"INSERT INTO "table" ("col1") VALUES ($1)"###);
     }
 }
 
@@ -506,15 +529,15 @@ mod update_query {
 
     #[test]
     fn normal() {
-        let mut conds = Condition::default();
-        conds.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selectors = Selector::default();
+        selectors.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let mut values = Values::default();
+        let mut values = InputRecord::default();
         values.add_col("col2", Box::new(2));
 
         let query = UpdateQuery::<Postgres> {
             table_name: "table",
-            conds: vec1![conds],
+            selectors: vec![selectors],
             new_values: values,
         };
 
@@ -523,18 +546,18 @@ mod update_query {
 
     #[test]
     fn empty_values() {
-        let mut conds = Condition::default();
-        conds.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selectors = Selector::default();
+        selectors.add_col("col1", FindOperator::Eq(Box::new(1)));
 
-        let values = Values::default();
+        let values = InputRecord::default();
 
         let query = UpdateQuery::<Postgres> {
             table_name: "table",
-            conds: vec1![conds],
+            selectors: vec![selectors],
             new_values: values,
         };
 
-        assert_snapshot!(query.to_string(), @"<UPDATE query with no new values>");
+        assert_snapshot!(query.to_string(), @r###"UPDATE "table" SET <empty list> WHERE "col1" = $1"###);
     }
 }
 
@@ -543,12 +566,12 @@ mod delete_query {
 
     #[test]
     fn normal() {
-        let mut conds = Condition::default();
-        conds.add_col("col1", FindOperator::Eq(Box::new(1)));
+        let mut selectors = Selector::default();
+        selectors.add_col("col1", FindOperator::Eq(Box::new(1)));
 
         let query = DeleteQuery::<Postgres> {
             table_name: "table",
-            conds: vec1![conds],
+            selectors: vec![selectors],
         };
 
         assert_snapshot!(query.to_string(), @r###"DELETE FROM "table" WHERE "col1" = $1"###);

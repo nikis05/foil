@@ -45,7 +45,7 @@ macro_rules! record_and_delegate {
 impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
     type Error = Error<sqlx::Error>;
 
-    fn select<'o, 'q>(
+    fn select<'q, 'o>(
         self,
         query: crate::manager::SelectQuery<'q, Sqlite>,
     ) -> futures::stream::BoxStream<'o, Result<crate::manager::Record<Sqlite>, Self::Error>>
@@ -56,7 +56,7 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         record_and_delegate!(self, query, select)
     }
 
-    fn count<'o, 'q>(
+    fn count<'q, 'o>(
         self,
         query: crate::manager::CountQuery<'q, Sqlite>,
     ) -> futures::future::BoxFuture<'o, Result<u32, Self::Error>>
@@ -69,7 +69,7 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         record_and_delegate!(self, query, count)
     }
 
-    fn insert<'o, 'q>(
+    fn insert<'q, 'o>(
         self,
         query: crate::manager::InsertQuery<'q, Sqlite>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>
@@ -80,7 +80,7 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         record_and_delegate!(self, query, insert)
     }
 
-    fn insert_returning<'o, 'q>(
+    fn insert_returning<'q, 'o>(
         self,
         query: crate::manager::InsertReturningQuery<'q, Sqlite>,
     ) -> futures::stream::BoxStream<'o, Result<crate::manager::Record<Sqlite>, Self::Error>>
@@ -91,7 +91,7 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         record_and_delegate!(self, query, insert_returning)
     }
 
-    fn update<'o, 'q>(
+    fn update<'q, 'o>(
         self,
         query: crate::manager::UpdateQuery<'q, Sqlite>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>
@@ -102,7 +102,7 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         record_and_delegate!(self, query, update)
     }
 
-    fn delete<'o, 'q>(
+    fn delete<'q, 'o>(
         self,
         query: crate::manager::DeleteQuery<'q, Sqlite>,
     ) -> futures::future::BoxFuture<'o, Result<(), Self::Error>>

@@ -2,14 +2,13 @@ use super::{Col, Field};
 use crate::{
     entity::{FindOptions, OrderBy},
     manager::{
-        Condition, FindOperator, FromRecord, IntoCondition, MockManager, Order, RecordError,
-        ToValues, Value, Values,
+        impls::mock::MockManager, FindOperator, FromRecord, InputRecord, IntoSelector, Order,
+        Record, RecordError, Selector, ToInputRecord, Value,
     },
     Create, Delete, Entity, Update,
 };
 use insta::{assert_debug_snapshot, assert_snapshot};
 use sqlx::Sqlite;
-use vec1::{vec1, Vec1};
 
 #[derive(Debug)]
 struct Character {
@@ -32,7 +31,7 @@ impl FromRecord<Sqlite> for Character {
 
 impl Entity<Sqlite> for Character {
     type Id = u8;
-    type Cond = CharacterCond;
+    type Selector<'q> = CharacterSelector<'q>;
     type Col = CharacterCol;
 
     fn table_name() -> &'static str {
@@ -43,8 +42,8 @@ impl Entity<Sqlite> for Character {
         "id"
     }
 
-    fn col_names() -> Vec1<&'static str> {
-        vec1!["id", "name", "is_handsome", "father_name"]
+    fn col_names() -> &'static [&'static str] {
+        &["id", "name", "is_handsome", "father_name"]
     }
 
     fn id(&self) -> Self::Id {
@@ -52,16 +51,16 @@ impl Entity<Sqlite> for Character {
     }
 }
 
-struct CharacterCond {
+struct CharacterSelector<'q> {
     id: Field<FindOperator<u8>>,
-    name: Field<FindOperator<String>>,
+    name: Field<FindOperator<&'q str>>,
     is_handsome: Field<FindOperator<bool>>,
-    father_name: Field<FindOperator<Option<String>>>,
+    father_name: Field<FindOperator<Option<&'q str>>>,
 }
 
-impl IntoCondition<Sqlite> for CharacterCond {
-    fn into_condition(self) -> crate::manager::Condition<Sqlite> {
-        let mut cond = Condition::default();
+impl<'q> IntoSelector<'q, Sqlite> for CharacterSelector<'q> {
+    fn into_selector(self) -> Selector<'q, Sqlite> {
+        let mut cond = Selector::new();
 
         if let Field::Set(op) = self.id {
             cond.add_col("id", op.boxed());
@@ -83,6 +82,7 @@ impl IntoCondition<Sqlite> for CharacterCond {
     }
 }
 
+#[derive(Clone, Copy)]
 enum CharacterCol {
     Id,
     Name,
@@ -102,15 +102,15 @@ impl Col for CharacterCol {
 }
 
 impl Create<Sqlite> for Character {
-    type Input = CharacterInput;
+    type Input<'q> = CharacterInput<'q>;
 
-    fn generated_cols() -> Vec1<&'static str> {
-        vec1!["id"]
+    fn generated_col_names() -> &'static [&'static str] {
+        &["is"]
     }
 
-    fn construct(
-        input: &Self::Input,
-        generated: &crate::manager::Record<Sqlite>,
+    fn construct<'q>(
+        input: &Self::Input<'q>,
+        generated: &Record<Sqlite>,
     ) -> Result<Self, RecordError> {
         Ok(Self {
             id: if let Field::Set(id) = input.id {
@@ -118,10 +118,10 @@ impl Create<Sqlite> for Character {
             } else {
                 generated.col("id")?
             },
-            name: input.name.clone(),
+            name: input.name.to_owned(),
             is_handsome: input.is_handsome,
-            father_name: if let Field::Set(father_name) = &input.father_name {
-                father_name.clone()
+            father_name: if let Field::Set(father_name) = input.father_name {
+                father_name.map(ToOwned::to_owned)
             } else {
                 generated.col("father_name")?
             },
@@ -129,79 +129,79 @@ impl Create<Sqlite> for Character {
     }
 }
 
-struct CharacterInput {
+struct CharacterInput<'q> {
     id: Field<u8>,
-    name: String,
+    name: &'q str,
     is_handsome: bool,
-    father_name: Field<Option<String>>,
+    father_name: Field<Option<&'q str>>,
 }
 
-impl From<&Character> for CharacterInput {
-    fn from(from: &Character) -> Self {
+impl<'q> From<&'q Character> for CharacterInput<'q> {
+    fn from(from: &'q Character) -> Self {
         Self {
             id: Field::Set(from.id),
-            name: from.name.clone(),
+            name: &from.name,
             is_handsome: from.is_handsome,
-            father_name: Field::Set(from.father_name.clone()),
+            father_name: Field::Set(from.father_name.as_deref()),
         }
     }
 }
 
-impl ToValues<Sqlite> for CharacterInput {
-    fn to_values(&self) -> crate::manager::Values<Sqlite> {
-        let mut values = Values::default();
+impl<'q> ToInputRecord<'q, Sqlite> for CharacterInput<'q> {
+    fn to_input_record(&self) -> InputRecord<'q, Sqlite> {
+        let mut values = InputRecord::new();
         if let Field::Set(id) = self.id {
             values.add_col("id", Box::new(id));
         }
-        values.add_col("name", Box::new(self.name.clone()));
+        values.add_col("name", Box::new(self.name));
         values.add_col("is_handsome", Box::new(self.is_handsome));
-        if let Field::Set(father_name) = &self.father_name {
-            values.add_col("father_name", Box::new(father_name.clone()));
+        if let Field::Set(father_name) = self.father_name {
+            values.add_col("father_name", Box::new(father_name));
         }
         values
     }
 }
 
 impl Update<Sqlite> for Character {
-    type Patch = CharacterPatch;
+    type Patch<'q> = CharacterPatch<'q>;
 
-    fn apply_patch(&mut self, patch: Self::Patch) {
+    fn apply_patch(&mut self, patch: Self::Patch<'_>) {
         if let Field::Set(id) = patch.id {
             self.id = id;
         }
         if let Field::Set(name) = patch.name {
-            self.name = name;
+            self.name = name.to_owned();
         }
         if let Field::Set(is_handsome) = patch.is_handsome {
             self.is_handsome = is_handsome;
         }
         if let Field::Set(father_name) = patch.father_name {
-            self.father_name = father_name;
+            self.father_name = father_name.map(ToOwned::to_owned);
         }
     }
 }
 
-struct CharacterPatch {
+struct CharacterPatch<'q> {
     id: Field<u8>,
-    name: Field<String>,
+    name: Field<&'q str>,
     is_handsome: Field<bool>,
-    father_name: Field<Option<String>>,
+    father_name: Field<Option<&'q str>>,
 }
 
-impl ToValues<Sqlite> for CharacterPatch {
-    fn to_values(&self) -> crate::manager::Values<Sqlite> {
-        let mut values = Values::default();
+impl<'q> ToInputRecord<'q, Sqlite> for CharacterPatch<'q> {
+    fn to_input_record(&self) -> InputRecord<'q, Sqlite> {
+        let mut values = InputRecord::new();
         if let Field::Set(id) = self.id {
             values.add_col("id", Box::new(id));
         }
-        if let Field::Set(name) = &self.name {
-            values.add_col("name", Box::new(name.clone()));
+        if let Field::Set(name) = self.name {
+            values.add_col("name", Box::new(name));
         }
         if let Field::Set(is_handsome) = self.is_handsome {
             values.add_col("is_handsome", Box::new(is_handsome));
         }
-        if let Field::Set(father_name) = &self.father_name {
-            values.add_col("father_name", Box::new(father_name.clone()));
+        if let Field::Set(father_name) = self.father_name {
+            values.add_col("father_name", Box::new(father_name));
         }
         values
     }
@@ -220,24 +220,24 @@ async fn setup() -> MockManager {
 
     Character::insert(
         &mut manager,
-        vec1![
+        vec![
             CharacterInput {
                 id: Field::Set(0),
-                name: "Legalas".into(),
+                name: "Legalas",
                 is_handsome: true,
-                father_name: Field::Set(None)
+                father_name: Field::Set(None),
             },
             CharacterInput {
                 id: Field::Set(1),
-                name: "Himmly".into(),
+                name: "Himmly",
                 is_handsome: false,
-                father_name: Field::Set(Some("Gloyne".into()))
+                father_name: Field::Set(Some("Gloyne")),
             },
             CharacterInput {
                 id: Field::Set(2),
-                name: "Aragorn".into(),
+                name: "Aragorn",
                 is_handsome: true,
-                father_name: Field::Set(Some("Arathorn".into()))
+                father_name: Field::Set(Some("Arathorn")),
             },
         ],
     )
@@ -261,7 +261,7 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Set(FindOperator::Eq(true)),
@@ -299,7 +299,7 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Set(FindOperator::Ne(true)),
@@ -331,9 +331,9 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
-                    name: Field::Set(FindOperator::In(vec1!["Himmly".into(), "Legalas".into()])),
+                    name: Field::Set(FindOperator::In(vec!["Himmly".into(), "Legalas".into()])),
                     is_handsome: Field::Omit,
                     father_name: Field::Omit,
                 }],
@@ -369,12 +369,9 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
-                    name: Field::Set(FindOperator::NotIn(vec1![
-                        "Himmly".into(),
-                        "Legalas".into()
-                    ])),
+                    name: Field::Set(FindOperator::NotIn(vec!["Himmly".into(), "Legalas".into()])),
                     is_handsome: Field::Omit,
                     father_name: Field::Omit,
                 }],
@@ -404,11 +401,11 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Set(FindOperator::Eq(None))
+                    father_name: Field::Set(FindOperator::Eq(None)),
                 }],
             )
             .all()
@@ -434,11 +431,11 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Set(FindOperator::Ne(None))
+                    father_name: Field::Set(FindOperator::Ne(None)),
                 }],
             )
             .all()
@@ -474,11 +471,11 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Set(FindOperator::In(vec1![Some("Arathorn".into()), None]))
+                    father_name: Field::Set(FindOperator::In(vec![Some("Arathorn".into()), None])),
                 }],
             )
             .all()
@@ -512,14 +509,14 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Set(FindOperator::NotIn(vec1![
+                    father_name: Field::Set(FindOperator::NotIn(vec![
                         Some("Arathorn".into()),
-                        None
-                    ]))
+                        None,
+                    ])),
                 }],
             )
             .all()
@@ -547,7 +544,7 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -593,11 +590,11 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Set(FindOperator::Eq(true)),
-                    father_name: Field::Set(FindOperator::Ne(None))
+                    father_name: Field::Set(FindOperator::Ne(None)),
                 }],
             )
             .all()
@@ -625,19 +622,19 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![
-                    CharacterCond {
+                vec![
+                    CharacterSelector {
                         id: Field::Omit,
                         name: Field::Set(FindOperator::Eq("Legalas".into())),
                         is_handsome: Field::Omit,
                         father_name: Field::Omit,
                     },
-                    CharacterCond {
+                    CharacterSelector {
                         id: Field::Omit,
                         name: Field::Omit,
                         is_handsome: Field::Set(FindOperator::Eq(false)),
                         father_name: Field::Omit,
-                    }
+                    },
                 ],
             )
             .all()
@@ -671,7 +668,7 @@ mod entity {
 
             let character = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Golum".into())),
                     is_handsome: Field::Omit,
@@ -686,7 +683,7 @@ mod entity {
 
             let character = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Legalas".into())),
                     is_handsome: Field::Omit,
@@ -715,7 +712,7 @@ mod entity {
 
             let character = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Golum".into())),
                     is_handsome: Field::Omit,
@@ -733,7 +730,7 @@ mod entity {
 
             let character = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Legalas".into())),
                     is_handsome: Field::Omit,
@@ -761,7 +758,7 @@ mod entity {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -769,35 +766,34 @@ mod entity {
                 }],
             )
             .all()
-            .await;
+            .await
+            .unwrap();
 
             assert_debug_snapshot!(characters, @r###"
-            Ok(
-                [
-                    Character {
-                        id: 0,
-                        name: "Legalas",
-                        is_handsome: true,
-                        father_name: None,
-                    },
-                    Character {
-                        id: 1,
-                        name: "Himmly",
-                        is_handsome: false,
-                        father_name: Some(
-                            "Gloyne",
-                        ),
-                    },
-                    Character {
-                        id: 2,
-                        name: "Aragorn",
-                        is_handsome: true,
-                        father_name: Some(
-                            "Arathorn",
-                        ),
-                    },
-                ],
-            )
+            [
+                Character {
+                    id: 0,
+                    name: "Legalas",
+                    is_handsome: true,
+                    father_name: None,
+                },
+                Character {
+                    id: 1,
+                    name: "Himmly",
+                    is_handsome: false,
+                    father_name: Some(
+                        "Gloyne",
+                    ),
+                },
+                Character {
+                    id: 2,
+                    name: "Aragorn",
+                    is_handsome: true,
+                    father_name: Some(
+                        "Arathorn",
+                    ),
+                },
+            ]
             "###);
         }
 
@@ -807,7 +803,7 @@ mod entity {
 
             let mut characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -867,9 +863,9 @@ mod entity {
         #[tokio::test]
         async fn no_options() {
             let mut manager = setup().await;
-            let characters = Character::find_with(
+            let characters = Character::find_with_options(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -917,9 +913,9 @@ mod entity {
         #[tokio::test]
         async fn order_by() {
             let mut manager = setup().await;
-            let characters = Character::find_with(
+            let characters = Character::find_with_options(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -927,7 +923,7 @@ mod entity {
                 }],
                 FindOptions {
                     order_by: Some(OrderBy {
-                        cols: vec1![CharacterCol::Id],
+                        cols: vec![CharacterCol::Id],
                         order: Order::Desc,
                     }),
                     offset: None,
@@ -1025,7 +1021,7 @@ mod entity {
             let mut manager = setup().await;
             let count = Character::count(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Set(FindOperator::Eq(true)),
@@ -1044,7 +1040,7 @@ mod entity {
             let mut manager = setup().await;
             let count = Character::count(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1067,7 +1063,7 @@ mod entity {
             let mut manager = setup().await;
             let exists = Character::exists(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Himmly".into())),
                     is_handsome: Field::Omit,
@@ -1086,7 +1082,7 @@ mod entity {
             let mut manager = setup().await;
             let exists = Character::exists(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Set(FindOperator::Eq("Gollum".into())),
                     is_handsome: Field::Omit,
@@ -1105,7 +1101,7 @@ mod entity {
             let mut manager = setup().await;
             let exists = Character::exists(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1179,7 +1175,7 @@ mod update {
 
             Character::update(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Set(FindOperator::Eq(1)),
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1216,11 +1212,11 @@ mod update {
 
             Character::update(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Omit
+                    father_name: Field::Omit,
                 }],
                 CharacterPatch {
                     id: Field::Omit,
@@ -1236,11 +1232,11 @@ mod update {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Omit
+                    father_name: Field::Omit,
                 }],
             )
             .all()
@@ -1281,11 +1277,11 @@ mod update {
 
             Character::update(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Omit
+                    father_name: Field::Omit,
                 }],
                 CharacterPatch {
                     id: Field::Omit,
@@ -1301,11 +1297,11 @@ mod update {
 
             let characters = Character::find(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
-                    father_name: Field::Omit
+                    father_name: Field::Omit,
                 }],
             )
             .all()
@@ -1395,7 +1391,7 @@ mod delete {
 
             Character::delete(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Set(FindOperator::Eq(true)),
@@ -1409,7 +1405,7 @@ mod delete {
 
             let count = Character::count(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1428,7 +1424,7 @@ mod delete {
 
             Character::delete(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1442,7 +1438,7 @@ mod delete {
 
             let count = Character::count(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,
@@ -1463,14 +1459,14 @@ mod delete {
         async fn normal() {
             let mut manager = setup().await;
 
-            let character = Character::get(&mut manager, 0).await.unwrap();
+            let character = Character::get(&mut manager, 1).await.unwrap();
             character.remove(&mut manager).await.unwrap();
 
             assert_snapshot!(manager.last_statement().unwrap(), @r###"DELETE FROM "character" WHERE "id" = ?"###);
 
             let count = Character::count(
                 &mut manager,
-                vec1![CharacterCond {
+                vec![CharacterSelector {
                     id: Field::Omit,
                     name: Field::Omit,
                     is_handsome: Field::Omit,

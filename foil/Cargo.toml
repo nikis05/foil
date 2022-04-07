@@ -7,12 +7,15 @@ edition = "2021"
 
 [dependencies]
 async-stream = "0.3.2"
+chrono-rs = { package = "chrono", version = "0.4.19", optional = true, default-features = false }
 futures = "0.3.17"
 itertools = "0.10.3"
-sqlx = { version = "0.5.9", default-features = false }
+serde_json = { version = "1.0.73", optional = true, default-features = false }
+serde = { version = "1.0.132", optional = true, default-features = false }
+sqlx = { version = "0.5.11", default-features = false }
 thiserror = "1.0.30"
 tokio = { version = "1.15.0", optional = true, features = ["test-util", "macros"] }
-vec1 = "1.8.0"
+time-rs = { package = "time", version = "0.3.7", optional = true, default-features = false }
 
 [dev-dependencies]
 foil = { path = ".", features = ["runtime-tokio-rustls", "all", "tokio"]}
@@ -36,9 +39,9 @@ any = ["sqlx/any"]
 all-types = ["bigdecimal", "decimal", "json", "time", "chrono", "ipnetwork", "mac_address", "uuid", "bit-vec", "bstr", "git2"]
 bigdecimal = ["sqlx/bigdecimal"]
 decimal = ["sqlx/decimal"]
-json = ["sqlx/json"]
-time = ["sqlx/time"]
-chrono = ["sqlx/chrono"]
+json = ["sqlx/json", "serde", "serde_json"]
+time = ["sqlx/time", "time-rs"]
+chrono = ["sqlx/chrono", "chrono-rs"]
 ipnetwork = ["sqlx/ipnetwork"]
 mac_address = ["sqlx/mac_address"]
 uuid = ["sqlx/uuid"]

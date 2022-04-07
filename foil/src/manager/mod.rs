@@ -1,17 +1,20 @@
 use futures::{future::BoxFuture, stream::BoxStream};
-use sqlx::query::Query;
-use sqlx::{database::HasArguments, Database, Decode, Encode, Row, Type};
+use sqlx::{Database, Decode, Row, Type};
+use std::any::Any;
+use std::collections::BTreeMap;
 use std::error::Error;
 use thiserror::Error;
-use vec1::Vec1;
 
 mod display;
-mod impls {
+pub mod impls {
     mod executor;
     pub mod log;
     #[cfg(all(feature = "test-manager", feature = "sqlite"))]
     pub mod mock;
 }
+mod value;
+
+pub use value::Value;
 
 pub use impls::log::LogManager;
 #[cfg(all(feature = "test-manager", feature = "sqlite"))]
@@ -20,7 +23,7 @@ pub use impls::mock::MockManager;
 pub trait Manager<'m, DB: Database>: Send {
     type Error: Error + Send + Sync + 'static;
 
-    fn select<'o, 'q>(
+    fn select<'q, 'o>(
         self,
         query: SelectQuery<'q, DB>,
     ) -> BoxStream<'o, Result<Record<DB>, Self::Error>>
@@ -28,19 +31,19 @@ pub trait Manager<'m, DB: Database>: Send {
         'm: 'o,
         'q: 'o;
 
-    fn count<'o, 'q>(self, query: CountQuery<'q, DB>) -> BoxFuture<'o, Result<u32, Self::Error>>
+    fn count<'q, 'o>(self, query: CountQuery<'q, DB>) -> BoxFuture<'o, Result<u32, Self::Error>>
     where
         'm: 'o,
         'q: 'o,
         for<'a> u32: Type<DB> + Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>;
 
-    fn insert<'o, 'q>(self, query: InsertQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
+    fn insert<'q, 'o>(self, query: InsertQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
     where
         'm: 'o,
         'q: 'o;
 
-    fn insert_returning<'o, 'q>(
+    fn insert_returning<'q, 'o>(
         self,
         query: InsertReturningQuery<'q, DB>,
     ) -> BoxStream<'o, Result<Record<DB>, Self::Error>>
@@ -48,12 +51,12 @@ pub trait Manager<'m, DB: Database>: Send {
         'm: 'o,
         'q: 'o;
 
-    fn update<'o, 'q>(self, query: UpdateQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
+    fn update<'q, 'o>(self, query: UpdateQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
     where
         'm: 'o,
         'q: 'o;
 
-    fn delete<'o, 'q>(self, query: DeleteQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
+    fn delete<'q, 'o>(self, query: DeleteQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>
     where
         'm: 'o,
         'q: 'o;
@@ -61,60 +64,85 @@ pub trait Manager<'m, DB: Database>: Send {
 
 pub struct SelectQuery<'q, DB: Database> {
     pub table_name: &'q str,
-    pub col_names: Vec1<&'q str>,
-    pub conds: Vec1<Condition<DB>>,
-    pub order_by: Option<(Vec1<&'q str>, Order)>,
+    pub col_names: &'q [&'q str],
+    pub selectors: Vec<Selector<'q, DB>>,
+    pub order_by: Option<OrderBy<&'q str>>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
 }
 
 pub struct CountQuery<'q, DB: Database> {
     pub table_name: &'q str,
-    pub conds: Vec1<Condition<DB>>,
+    pub selectors: Vec<Selector<'q, DB>>,
 }
 
 pub struct InsertQuery<'q, DB: Database> {
     pub table_name: &'q str,
-    pub col_names: Vec1<&'q str>,
-    pub values: Vec1<Values<DB>>,
+    pub values: Vec<InputRecord<'q, DB>>,
 }
 
 pub struct InsertReturningQuery<'q, DB: Database> {
     pub insert_query: InsertQuery<'q, DB>,
-    pub returning_cols: Vec1<&'q str>,
+    pub returning_cols: &'q [&'q str],
 }
 
 pub struct UpdateQuery<'q, DB: Database> {
     pub table_name: &'q str,
-    pub conds: Vec1<Condition<DB>>,
-    pub new_values: Values<DB>,
+    pub selectors: Vec<Selector<'q, DB>>,
+    pub new_values: InputRecord<'q, DB>,
 }
 
 pub struct DeleteQuery<'q, DB: Database> {
     pub table_name: &'q str,
-    pub conds: Vec1<Condition<DB>>,
+    pub selectors: Vec<Selector<'q, DB>>,
 }
 
-pub struct Condition<DB: Database>(Vec<(&'static str, FindOperator<Box<dyn Value<DB>>>)>);
+pub struct Selector<'q, DB: Database>(Vec<(&'q str, FindOperator<Box<dyn Value<'q, DB> + 'q>>)>);
 
-impl<DB: Database> Default for Condition<DB> {
-    fn default() -> Self {
-        Self(Vec::default())
-    }
-}
-
-impl<DB: Database> Condition<DB> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+impl<'q, DB: Database> Selector<'q, DB> {
+    pub fn new() -> Self {
+        Self(Vec::new())
     }
 
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn add_col(
+        &mut self,
+        col_name: &'q str,
+        operator: FindOperator<Box<dyn Value<'q, DB> + 'q>>,
+    ) {
+        self.0.push((col_name, operator));
+    }
+
+    pub fn remove_col(&mut self, col_name: &str) {
+        if let Some(index) = self.0.iter().position(|entry| entry.0 == col_name) {
+            self.0.remove(index);
+        }
+    }
+
+    pub fn has_col(&self, col_name: &str) -> bool {
+        self.0.iter().any(|entry| entry.0 == col_name)
+    }
+
+    pub fn col(&self, col_name: &str) -> Option<&FindOperator<Box<dyn Value<'q, DB> + 'q>>> {
+        self.0.iter().find_map(|entry| {
+            if entry.0 == col_name {
+                Some(&entry.1)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn cols(
         &self,
-    ) -> impl ExactSizeIterator<Item = (&'static str, &FindOperator<Box<dyn Value<DB>>>)> {
+    ) -> impl ExactSizeIterator<Item = (&'q str, &FindOperator<Box<dyn Value<'q, DB> + 'q>>)> {
         self.0
             .iter()
             .map(|(col_name, operator)| (*col_name, operator))
@@ -122,47 +150,57 @@ impl<DB: Database> Condition<DB> {
 
     pub fn into_cols(
         self,
-    ) -> impl ExactSizeIterator<Item = (&'static str, FindOperator<Box<dyn Value<DB>>>)> {
+    ) -> impl ExactSizeIterator<Item = (&'q str, FindOperator<Box<dyn Value<'q, DB> + 'q>>)> {
         self.0.into_iter()
-    }
-
-    pub fn add_col(&mut self, col_name: &'static str, operator: FindOperator<Box<dyn Value<DB>>>) {
-        self.0.push((col_name, operator));
     }
 }
 
-pub trait IntoCondition<DB: Database> {
-    fn into_condition(self) -> Condition<DB>;
+impl<'q, DB: Database> Default for Selector<'q, DB> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait IntoSelector<'q, DB: Database> {
+    fn into_selector(self) -> Selector<'q, DB>;
 }
 
 pub enum FindOperator<T> {
     Eq(T),
     Ne(T),
-    In(Vec1<T>),
-    NotIn(Vec1<T>),
+    In(Vec<T>),
+    NotIn(Vec<T>),
 }
 
 impl<T> FindOperator<T> {
-    pub fn boxed<DB: Database>(self) -> FindOperator<Box<dyn Value<DB>>>
+    pub fn boxed<'q, DB: Database>(self) -> FindOperator<Box<dyn Value<'q, DB> + 'q>>
     where
-        T: Value<DB>,
+        T: Value<'q, DB> + 'q,
     {
         match self {
             Self::Eq(val) => FindOperator::Eq(Box::new(val)),
             Self::Ne(val) => FindOperator::Ne(Box::new(val)),
-            Self::In(vals) => {
-                FindOperator::In(vals.mapped(|val| Box::new(val) as Box<dyn Value<DB>>))
-            }
-            Self::NotIn(vals) => {
-                FindOperator::NotIn(vals.mapped(|val| Box::new(val) as Box<dyn Value<DB>>))
-            }
+            Self::In(vals) => FindOperator::In(
+                vals.into_iter()
+                    .map(|val| Box::new(val) as Box<dyn Value<'q, _>>)
+                    .collect(),
+            ),
+            Self::NotIn(vals) => FindOperator::NotIn(
+                vals.into_iter()
+                    .map(|val| Box::new(val) as Box<dyn Value<'q, _>>)
+                    .collect(),
+            ),
         }
     }
 }
 
-pub struct Values<DB: Database>(Vec<(&'static str, Box<dyn Value<DB>>)>);
+pub struct InputRecord<'q, DB: Database>(Vec<(&'q str, Box<dyn Value<'q, DB> + 'q>)>);
 
-impl<DB: Database> Values<DB> {
+impl<'q, DB: Database> InputRecord<'q, DB> {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -171,173 +209,113 @@ impl<DB: Database> Values<DB> {
         self.0.iter().any(|entry| entry.0 == col_name)
     }
 
-    pub fn add_col(&mut self, col_name: &'static str, value: Box<dyn Value<DB>>) {
+    pub fn add_col(&mut self, col_name: &'q str, value: Box<dyn Value<'q, DB> + 'q>) {
         self.0.push((col_name, value));
     }
 
-    pub fn cols(&self) -> impl ExactSizeIterator<Item = (&'static str, &Box<dyn Value<DB>>)> {
+    pub fn remove_col(&mut self, col_name: &str) {
+        if let Some(index) = self.0.iter().position(|entry| entry.0 == col_name) {
+            self.0.remove(index);
+        }
+    }
+
+    pub fn col(&self, col_name: &str) -> Option<&Box<dyn Value<'q, DB> + 'q>> {
+        self.0.iter().find_map(|entry| {
+            if entry.0 == col_name {
+                Some(&entry.1)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn cols(&self) -> impl ExactSizeIterator<Item = (&'q str, &Box<dyn Value<'q, DB> + 'q>)> {
         self.0.iter().map(|(col_name, value)| (*col_name, value))
     }
 
-    pub fn into_cols(self) -> impl ExactSizeIterator<Item = (&'static str, Box<dyn Value<DB>>)> {
+    pub fn into_cols(
+        self,
+    ) -> impl ExactSizeIterator<Item = (&'q str, Box<dyn Value<'q, DB> + 'q>)> {
         self.0
             .into_iter()
             .map(|(col_name, value)| (col_name, value))
     }
 }
 
-impl<DB: Database> Default for Values<DB> {
+impl<'q, DB: Database> Default for InputRecord<'q, DB> {
     fn default() -> Self {
-        Self(Vec::default())
+        Self::new()
     }
 }
 
-pub trait ToValues<DB: Database> {
-    fn to_values(&self) -> Values<DB>;
+pub trait ToInputRecord<'q, DB: Database> {
+    fn to_input_record(&self) -> InputRecord<'q, DB>;
 }
 
-pub trait Value<DB: Database>: Send + 'static {
-    fn is_null(&self) -> bool;
-
-    fn bind<'q>(
-        self: Box<Self>,
-        query: Query<'q, DB, <DB as HasArguments<'q>>::Arguments>,
-    ) -> Query<'q, DB, <DB as HasArguments<'q>>::Arguments>
-    where
-        Self: 'q;
+pub struct OrderBy<C> {
+    pub order: Order,
+    pub cols: Vec<C>,
 }
-
-impl<T, DB: Database> Value<DB> for T
-where
-    T: for<'q> Encode<'q, DB> + Type<DB> + Send + NonNullableValue + 'static,
-{
-    fn is_null(&self) -> bool {
-        false
-    }
-
-    fn bind<'q>(
-        self: Box<Self>,
-        query: Query<'q, DB, <DB as HasArguments<'q>>::Arguments>,
-    ) -> Query<'q, DB, <DB as HasArguments<'q>>::Arguments>
-    where
-        Self: 'q,
-    {
-        query.bind(*self)
-    }
-}
-
-pub trait NonNullableValue {}
-
-macro_rules! impl_non_nullable_value {
-    ( $( $type:ty ),+ ) => {
-        $(
-            impl NonNullableValue for $type {}
-        )+
-    };
-}
-
-impl_non_nullable_value!(bool, u8, i8, u16, i16, u32, i32, f32, u64, i64, f64, String);
-
-impl<T> NonNullableValue for Vec<T> {}
-
-impl<T, DB: Database> Value<DB> for Option<T>
-where
-    Option<T>: for<'q> Encode<'q, DB> + Type<DB> + Send + 'static,
-{
-    fn is_null(&self) -> bool {
-        self.is_none()
-    }
-
-    fn bind<'q>(
-        self: Box<Self>,
-        query: Query<'q, DB, <DB as HasArguments<'q>>::Arguments>,
-    ) -> Query<'q, DB, <DB as HasArguments<'q>>::Arguments>
-    where
-        Self: 'q,
-    {
-        query.bind(*self)
-    }
-}
-
-#[cfg(feature = "bigdecimal")]
-impl_non_nullable_value!(sqlx::types::BigDecimal);
-
-#[cfg(feature = "decimal")]
-impl_non_nullable_value!(sqlx::types::Decimal);
-
-#[cfg(feature = "json")]
-impl<T> NonNullableValue for sqlx::types::Json<T> {}
-
-#[cfg(feature = "time")]
-impl_non_nullable_value!(
-    sqlx::types::time::Date,
-    sqlx::types::time::OffsetDateTime,
-    sqlx::types::time::PrimitiveDateTime,
-    sqlx::types::time::Time,
-    sqlx::types::time::UtcOffset
-);
-
-#[cfg(feature = "chrono")]
-impl<TZ: sqlx::types::chrono::TimeZone> NonNullableValue for sqlx::types::chrono::DateTime<TZ> {}
-
-#[cfg(feature = "chrono")]
-impl_non_nullable_value!(
-    sqlx::types::chrono::FixedOffset,
-    sqlx::types::chrono::Local,
-    sqlx::types::chrono::NaiveDate,
-    sqlx::types::chrono::NaiveDateTime,
-    sqlx::types::chrono::NaiveTime,
-    sqlx::types::chrono::Utc
-);
-
-#[cfg(feature = "ipnetwork")]
-impl_non_nullable_value!(
-    sqlx::types::ipnetwork::Ipv4Network,
-    sqlx::types::ipnetwork::Ipv6Network,
-    sqlx::types::ipnetwork::IpNetwork
-);
-
-#[cfg(feature = "mac_address")]
-impl_non_nullable_value!(sqlx::types::mac_address::MacAddress);
-
-#[cfg(feature = "uuid")]
-impl_non_nullable_value!(sqlx::types::Uuid);
-
-#[cfg(feature = "bit-vec")]
-impl_non_nullable_value!(sqlx::types::BitVec);
-
-#[cfg(feature = "bstr")]
-impl_non_nullable_value!(sqlx::types::bstr::BString);
-
-#[cfg(feature = "git2")]
-impl_non_nullable_value!(sqlx::types::git2::Oid);
 
 pub enum Order {
     Asc,
     Desc,
 }
 
-pub struct Record<DB: Database>(DB::Row);
+pub struct Record<DB: Database> {
+    row: Option<DB::Row>,
+    map: BTreeMap<String, Box<dyn Any + Send>>,
+}
 
 impl<DB: Database> Record<DB> {
-    fn from_row(row: DB::Row) -> Self {
-        Self(row)
+    pub fn new() -> Self {
+        Self {
+            row: None,
+            map: BTreeMap::new(),
+        }
     }
 
-    pub fn col<T: sqlx::Type<DB> + for<'d> sqlx::Decode<'d, DB>>(
+    pub fn from_row(row: DB::Row) -> Self {
+        Self {
+            row: Some(row),
+            map: BTreeMap::new(),
+        }
+    }
+
+    pub fn col<T: sqlx::Type<DB> + for<'d> sqlx::Decode<'d, DB> + Clone + Any>(
         &self,
         col_name: &str,
     ) -> Result<T, RecordError>
     where
         for<'a> &'a str: sqlx::ColumnIndex<DB::Row>,
     {
-        self.0.try_get(col_name).map_err(|e| match e {
-            sqlx::Error::ColumnNotFound(c) => RecordError::ColumnNotFound(c),
-            sqlx::Error::ColumnDecode { index, source } => {
-                RecordError::ColumnDecode { index, source }
-            }
-            _ => unreachable!(),
-        })
+        if let Some(entry) = self.map.get(col_name) {
+            entry
+                .as_ref()
+                .downcast_ref::<T>()
+                .cloned()
+                .ok_or_else(|| RecordError::ColumnDecode {
+                    index: col_name.into(),
+                    source: None,
+                })
+        } else if let Some(row) = self.row.as_ref() {
+            row.try_get::<T, _>(col_name).map_err(|e| match e {
+                sqlx::Error::ColumnNotFound(c) => RecordError::ColumnNotFound(c),
+                sqlx::Error::ColumnDecode { index, source } => RecordError::ColumnDecode {
+                    index,
+                    source: Some(source),
+                },
+                _ => unreachable!(),
+            })
+        } else {
+            Err(RecordError::ColumnNotFound(col_name.into()))
+        }
+    }
+}
+
+impl<DB: Database> Default for Record<DB> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -345,10 +323,10 @@ impl<DB: Database> Record<DB> {
 pub enum RecordError {
     #[error("column not found: {0}")]
     ColumnNotFound(String),
-    #[error("error decoding column {index}: {source}")]
+    #[error("error decoding column {index}: {source:?}")]
     ColumnDecode {
         index: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 }
 
