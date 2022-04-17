@@ -1,6 +1,6 @@
 [package]
 name = "foil"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 async-stream = "0.3.2"
 chrono-rs = { package = "chrono", version = "0.4.19", optional = true, default-features = false }
+foil-macros = { path = "../foil-macros"}
 futures = "0.3.17"
 itertools = "0.10.3"
 serde_json = { version = "1.0.73", optional = true, default-features = false }
@@ -30,11 +31,11 @@ runtime-tokio-rustls = ["sqlx/runtime-tokio-rustls"]
 all = ["all-databases", "all-types", "all-managers"]
 
 all-databases = ["mysql", "mssql", "postgres", "sqlite", "any"]
-mysql = ["sqlx/mysql"]
-mssql = ["sqlx/mssql"]
-postgres = ["sqlx/postgres"]
-sqlite = ["sqlx/sqlite"]
-any = ["sqlx/any"]
+mysql = ["sqlx/mysql", "foil-macros/mysql"]
+mssql = ["sqlx/mssql", "foil-macros/mssql"]
+postgres = ["sqlx/postgres", "foil-macros/postgres"]
+sqlite = ["sqlx/sqlite", "foil-macros/sqlite"]
+any = ["sqlx/any", "foil-macros/any"]
 
 all-types = ["bigdecimal", "decimal", "json", "time", "chrono", "ipnetwork", "mac_address", "uuid", "bit-vec", "bstr", "git2"]
 bigdecimal = ["sqlx/bigdecimal"]

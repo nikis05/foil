@@ -18,6 +18,28 @@ struct Character {
     father_name: Option<String>,
 }
 
+impl Entity<Sqlite> for Character {
+    type Col = CharacterCol;
+    type Id = u8;
+    type Selector<'q> = CharacterSelector<'q>;
+
+    fn table_name() -> &'static str {
+        "character"
+    }
+
+    fn col_names() -> &'static [&'static str] {
+        &["id", "name", "is_handsome", "father_name"]
+    }
+
+    fn id_col_name() -> &'static str {
+        "id"
+    }
+
+    fn id(&self) -> Self::Id {
+        self.id
+    }
+}
+
 impl FromRecord<Sqlite> for Character {
     fn from_record(record: &crate::manager::Record<Sqlite>) -> Result<Self, RecordError> {
         Ok(Character {
@@ -26,59 +48,6 @@ impl FromRecord<Sqlite> for Character {
             is_handsome: record.col("is_handsome")?,
             father_name: record.col("father_name")?,
         })
-    }
-}
-
-impl Entity<Sqlite> for Character {
-    type Id = u8;
-    type Selector<'q> = CharacterSelector<'q>;
-    type Col = CharacterCol;
-
-    fn table_name() -> &'static str {
-        "character"
-    }
-
-    fn id_col_name() -> &'static str {
-        "id"
-    }
-
-    fn col_names() -> &'static [&'static str] {
-        &["id", "name", "is_handsome", "father_name"]
-    }
-
-    fn id(&self) -> Self::Id {
-        self.id
-    }
-}
-
-struct CharacterSelector<'q> {
-    id: Field<FindOperator<u8>>,
-    name: Field<FindOperator<&'q str>>,
-    is_handsome: Field<FindOperator<bool>>,
-    father_name: Field<FindOperator<Option<&'q str>>>,
-}
-
-impl<'q> IntoSelector<'q, Sqlite> for CharacterSelector<'q> {
-    fn into_selector(self) -> Selector<'q, Sqlite> {
-        let mut cond = Selector::new();
-
-        if let Field::Set(op) = self.id {
-            cond.add_col("id", op.boxed());
-        }
-
-        if let Field::Set(op) = self.name {
-            cond.add_col("name", op.boxed());
-        }
-
-        if let Field::Set(op) = self.is_handsome {
-            cond.add_col("is_handsome", op.boxed());
-        }
-
-        if let Field::Set(op) = self.father_name {
-            cond.add_col("father_name", op.boxed());
-        }
-
-        cond
     }
 }
 
@@ -101,11 +70,43 @@ impl Col for CharacterCol {
     }
 }
 
+#[derive(Default)]
+struct CharacterSelector<'q> {
+    id: Field<FindOperator<u8>>,
+    name: Field<FindOperator<&'q str>>,
+    is_handsome: Field<FindOperator<bool>>,
+    father_name: Field<FindOperator<Option<&'q str>>>,
+}
+
+impl<'q> IntoSelector<'q, Sqlite> for CharacterSelector<'q> {
+    fn into_selector(self) -> Selector<'q, Sqlite> {
+        let mut selector = Selector::new();
+
+        if let Field::Set(op) = self.id {
+            selector.add_col("id", op.boxed());
+        }
+
+        if let Field::Set(op) = self.name {
+            selector.add_col("name", op.boxed());
+        }
+
+        if let Field::Set(op) = self.is_handsome {
+            selector.add_col("is_handsome", op.boxed());
+        }
+
+        if let Field::Set(op) = self.father_name {
+            selector.add_col("father_name", op.boxed());
+        }
+
+        selector
+    }
+}
+
 impl Create<Sqlite> for Character {
     type Input<'q> = CharacterInput<'q>;
 
     fn generated_col_names() -> &'static [&'static str] {
-        &["is"]
+        &["father_name"]
     }
 
     fn construct<'q>(

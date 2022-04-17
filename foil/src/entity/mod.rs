@@ -20,10 +20,19 @@ use thiserror::Error;
 ))]
 mod test;
 
+// #[derive(Entity, Create)]
+// struct Character {
+//     id: u8,
+//     name: String,
+//     is_handsome: bool,
+//     #[foil(generated)]
+//     father_name: ::std::option::Option<String>,
+// }
+
 pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
     type Col: Col + Send;
     type Id: for<'q> Value<'q, DB> + Send;
-    type Selector<'q>: IntoSelector<'q, DB> + Send;
+    type Selector<'q>: IntoSelector<'q, DB> + Default + Send;
 
     fn table_name() -> &'static str;
 
@@ -278,6 +287,12 @@ pub trait Col: Copy {
 pub enum Field<T> {
     Set(T),
     Omit,
+}
+
+impl<T> Default for Field<T> {
+    fn default() -> Self {
+        Self::Omit
+    }
 }
 
 pub struct Selection<'m, E: Error + Send + Sync, T: FromRecord<DB>, DB: Database> {

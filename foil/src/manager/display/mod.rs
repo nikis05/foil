@@ -2,7 +2,6 @@ use super::{
     CountQuery, DeleteQuery, FindOperator, InsertQuery, InsertReturningQuery, Order, SelectQuery,
     Selector, UpdateQuery, Value,
 };
-use itertools::Itertools;
 use sqlx::Database;
 use std::fmt::{Display, Formatter, Result};
 

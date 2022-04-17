@@ -11,3 +11,4 @@ pub use manager::Manager;
 
 pub mod entity;
 pub mod manager;
+pub use foil_macros::{input, selector, Create, Delete, Entity, Update};
