@@ -1,5 +1,5 @@
 use quote::{quote, ToTokens};
-use syn::{parse2, GenericArgument, Lifetime, PathArguments, PathSegment, Type};
+use syn::{parse2, GenericArgument, PathArguments, PathSegment, Type};
 
 pub fn into_input_type(mut ty: Type) -> Type {
     let should_wrap_option = unwrap_option(&mut ty);
