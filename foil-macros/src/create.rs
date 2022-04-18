@@ -341,8 +341,13 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
 fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
     let mut expr = quote! { from.#field_name };
 
-    if unwrap_option(&mut field_config.input_ty.clone()) {
-        expr = quote! { #expr.as_ref() };
+    let mut unwrapped = field_config.input_ty.clone();
+    if unwrap_option(&mut unwrapped) {
+        if unwrapped == parse2(quote! { &'q str }).unwrap() {
+            expr = quote! { #expr.as_ref().map(::std::convert::AsRef::as_ref)}
+        } else {
+            expr = quote! { #expr.as_ref() };
+        }
     } else if !is_copy(&field_config.input_ty) {
         expr = quote! { &#expr };
     }

@@ -491,6 +491,7 @@ impl_value!(
     sqlx::types::chrono::Local,
     sqlx::types::chrono::NaiveDate,
     sqlx::types::chrono::NaiveTime,
+    sqlx::types::chrono::NaiveDateTime,
     sqlx::types::chrono::Utc,
     chrono_rs::Duration
 );
@@ -499,6 +500,7 @@ impl_value!(
 impl_value_for_pg_array!(
     sqlx::types::chrono::NaiveDate,
     sqlx::types::chrono::NaiveTime,
+    sqlx::types::chrono::NaiveDateTime,
     chrono_rs::Duration
 );
 
