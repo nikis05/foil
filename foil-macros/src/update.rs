@@ -209,6 +209,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
         .collect::<TokenStream>();
 
     quote! {
+        #[derive(::std::default::Default)]
         struct #patch_ident<'q> {
             #(
                 #field_names: ::foil::entity::Field<#field_input_types>

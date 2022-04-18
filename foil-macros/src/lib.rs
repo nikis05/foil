@@ -6,7 +6,9 @@
 #![allow(clippy::missing_errors_doc)]
 
 use crate::entity::derive_entity;
-use constructors::{expand_input, expand_selector, InputInput, SelectorInput};
+use constructors::{
+    expand_input, expand_patch, expand_selector, InputInput, PatchInput, SelectorInput,
+};
 use create::derive_create;
 use delete::derive_delete;
 use syn::{parse_macro_input, DeriveInput};
@@ -81,4 +83,10 @@ pub fn selector(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn input(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as InputInput);
     expand_input(input).into()
+}
+
+#[proc_macro]
+pub fn patch(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as PatchInput);
+    expand_patch(input).into()
 }

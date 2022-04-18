@@ -182,6 +182,7 @@ impl Update<Sqlite> for Character {
     }
 }
 
+#[derive(Default)]
 struct CharacterPatch<'q> {
     id: Field<u8>,
     name: Field<&'q str>,

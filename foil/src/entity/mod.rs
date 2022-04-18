@@ -211,7 +211,7 @@ pub enum CreateError<E: Error + Send + Sync> {
 }
 
 pub trait Update<DB: Database>: Entity<DB> + Send {
-    type Patch<'q>: ToInputRecord<'q, DB> + Send + Sync;
+    type Patch<'q>: ToInputRecord<'q, DB> + Default + Send + Sync;
 
     fn apply_patch(&mut self, patch: Self::Patch<'_>);
 

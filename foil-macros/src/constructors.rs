@@ -189,10 +189,10 @@ pub fn expand_selector(input: SelectorInput) -> TokenStream {
 
     quote! {
         #selector_ident {
-            ..::std::default::Default(),
             #(
                 #field_names: ::foil::entity::Field::Set(#field_values)
-            )*
+            ),*
+            ..::std::default::Default::default()
         }
     }
 }
@@ -265,6 +265,57 @@ pub fn expand_input(input: InputInput) -> TokenStream {
             #(
                 #field_names: #field_exprs
             ),*
+        }
+    }
+}
+
+pub struct PatchInput {
+    ident: Ident,
+    #[allow(dead_code)]
+    brace: Brace,
+    fields: Punctuated<PatchField, Token![,]>,
+}
+
+impl Parse for PatchInput {
+    #[allow(clippy::eval_order_dependence)]
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+
+        Ok(Self {
+            ident: input.parse()?,
+            brace: braced!(content in input),
+            fields: content.parse_terminated(PatchField::parse)?,
+        })
+    }
+}
+
+struct PatchField {
+    name: Ident,
+    #[allow(dead_code)]
+    colon: Token![:],
+    expr: Expr,
+}
+
+impl Parse for PatchField {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(Self {
+            name: input.parse()?,
+            colon: input.parse()?,
+            expr: input.parse()?,
+        })
+    }
+}
+
+pub fn expand_patch(input: PatchInput) -> TokenStream {
+    let patch_ident = input.ident;
+    let field_names = input.fields.iter().map(|field| &field.name);
+    let field_values = input.fields.iter().map(|field| &field.expr);
+    quote! {
+        #patch_ident {
+            #(
+                #field_names: ::foil::entity::Field::Set(#field_values)
+            ),*
+            ..::std::default::Default::default()
         }
     }
 }
