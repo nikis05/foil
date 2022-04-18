@@ -1,5 +1,5 @@
 use quote::{quote, ToTokens};
-use syn::{parse2, GenericArgument, PathArguments, PathSegment, Type};
+use syn::{parse2, GenericArgument, Lifetime, PathArguments, PathSegment, Type};
 
 pub fn into_input_type(mut ty: Type) -> Type {
     let should_wrap_option = unwrap_option(&mut ty);
@@ -124,8 +124,10 @@ fn unwrap_generic(
 }
 
 pub fn contains_q_lifetime(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        type_path.path.segments.iter().any(|segment| {
+    match ty {
+        Type::Array(array) => contains_q_lifetime(&array.elem),
+        Type::Paren(ty) => contains_q_lifetime(&ty.elem),
+        Type::Path(type_path) => type_path.path.segments.iter().any(|segment| {
             if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
                 arguments.args.iter().any(|argument| {
                     if let GenericArgument::Lifetime(life) = argument {
@@ -137,8 +139,17 @@ pub fn contains_q_lifetime(ty: &Type) -> bool {
             } else {
                 false
             }
-        })
-    } else {
-        false
+        }),
+        Type::Reference(reference) => {
+            if let Some(lifetime) = &reference.lifetime {
+                if lifetime.ident == "q" {
+                    return true;
+                }
+            }
+            contains_q_lifetime(&reference.elem)
+        }
+        Type::Slice(slice) => contains_q_lifetime(&slice.elem),
+        Type::Tuple(tuple) => tuple.elems.iter().any(contains_q_lifetime),
+        _ => false,
     }
 }
