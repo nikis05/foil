@@ -1,4 +1,5 @@
-use futures::{future::BoxFuture, stream::BoxStream};
+pub use futures::future::BoxFuture;
+use futures::stream::BoxStream;
 use sqlx::{Database, Decode, Row, Type};
 use std::any::Any;
 use std::collections::BTreeMap;

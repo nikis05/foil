@@ -19,7 +19,7 @@ pub fn derive_create(input: DeriveInput) -> Result<TokenStream> {
         .map(|db| expand_create(db, &config))
         .collect::<TokenStream>();
 
-    let input = expand_input(&config);
+    let input = expand_input(&dbs, &config);
 
     Ok(quote! {
         #create
@@ -271,7 +271,7 @@ fn expand_construct_field_expr(field_name: &Ident, field_config: &FieldConfig) -
     }
 }
 
-fn expand_input(config: &Config) -> TokenStream {
+fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let input_ident = &config.input_ident;
     let field_names = config.fields.keys().collect::<Vec<_>>();
@@ -290,7 +290,25 @@ fn expand_input(config: &Config) -> TokenStream {
     let to_input_record_entries = config
         .fields
         .iter()
-        .map(|(field_name, field_config)| expand_to_input_record_entry(field_name, field_config));
+        .map(|(field_name, field_config)| expand_to_input_record_entry(field_name, field_config))
+        .collect::<Vec<_>>();
+
+    let to_input_record_impls = dbs
+        .iter()
+        .map(|db| {
+            quote! {
+                impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #input_ident<'q> {
+                    fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, #db> {
+                        let mut values = foil::manager::InputRecord::new();
+                        #(
+                            #to_input_record_entries
+                        )*
+                        values
+                    }
+                }
+            }
+        })
+        .collect::<TokenStream>();
 
     quote! {
         struct #input_ident<'q> {
@@ -309,15 +327,7 @@ fn expand_input(config: &Config) -> TokenStream {
             }
         }
 
-        impl<'q> ::foil::manager::ToInputRecord<'q, Sqlite> for #input_ident<'q> {
-            fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, Sqlite> {
-                let mut values = foil::manager::InputRecord::new();
-                #(
-                    #to_input_record_entries
-                )*
-                values
-            }
-        }
+        #to_input_record_impls
     }
 }
 
@@ -349,7 +359,7 @@ fn expand_to_input_record_entry(field_name: &Ident, field_config: &FieldConfig) 
     let mut entry = quote! { values.add_col(#col_name, ::std::boxed::Box::new(#alias)); };
     if is_optional {
         entry = quote! {
-            if let Field::set(val) = self.#field_name {
+            if let ::foil::entity::Field::set(val) = self.#field_name {
                 #entry
             }
         };
