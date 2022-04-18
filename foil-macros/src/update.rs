@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -34,7 +34,7 @@ pub fn derive_update(input: DeriveInput) -> Result<TokenStream> {
 struct Config {
     entity_ident: Ident,
     patch_ident: Ident,
-    fields: HashMap<Ident, FieldConfig>,
+    fields: BTreeMap<Ident, FieldConfig>,
     generate_setters: bool,
 }
 
@@ -47,7 +47,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     let input_span = input.span();
     let entity_ident = input.ident;
     let patch_ident = Ident::new(&format!("{}Patch", entity_ident), Span::call_site());
-    let mut fields = HashMap::new();
+    let mut fields = BTreeMap::new();
 
     let mut attrs = Attrs::extract(input.attrs)?;
 

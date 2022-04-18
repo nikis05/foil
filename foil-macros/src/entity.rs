@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use heck::{ToSnakeCase, ToUpperCamelCase};
 
@@ -47,7 +47,7 @@ struct Config {
     selector_ident: Ident,
     table_name: LitStr,
     id_field_name: Ident,
-    fields: HashMap<Ident, FieldConfig>,
+    fields: BTreeMap<Ident, FieldConfig>,
 }
 
 struct FieldConfig {
@@ -62,7 +62,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     let entity_ident = input.ident;
     let vis = input.vis;
 
-    let mut fields = HashMap::new();
+    let mut fields = BTreeMap::new();
 
     let mut attrs = Attrs::extract(input.attrs)?;
 

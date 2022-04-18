@@ -4,7 +4,7 @@ use crate::{
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Ident, Lit, LitStr,
     Path, Result, Type,
@@ -30,7 +30,7 @@ pub fn derive_create(input: DeriveInput) -> Result<TokenStream> {
 struct Config {
     entity_ident: Ident,
     input_ident: Ident,
-    fields: HashMap<Ident, FieldConfig>,
+    fields: BTreeMap<Ident, FieldConfig>,
 }
 
 struct FieldConfig {
@@ -49,7 +49,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     let input_span = input.span();
     let entity_ident = input.ident;
     let input_ident = Ident::new(&format!("{}Input", entity_ident), Span::call_site());
-    let mut fields = HashMap::new();
+    let mut fields = BTreeMap::new();
 
     let mut attrs = Attrs::extract(input.attrs)?;
 
