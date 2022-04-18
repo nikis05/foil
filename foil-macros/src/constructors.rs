@@ -190,8 +190,8 @@ pub fn expand_selector(input: SelectorInput) -> TokenStream {
     quote! {
         #selector_ident {
             #(
-                #field_names: ::foil::entity::Field::Set(#field_values)
-            ),*
+                #field_names: ::foil::entity::Field::Set(#field_values),
+            )*
             ..::std::default::Default::default()
         }
     }
@@ -313,8 +313,8 @@ pub fn expand_patch(input: PatchInput) -> TokenStream {
     quote! {
         #patch_ident {
             #(
-                #field_names: ::foil::entity::Field::Set(#field_values)
-            ),*
+                #field_names: ::foil::entity::Field::Set(#field_values),
+            )*
             ..::std::default::Default::default()
         }
     }
