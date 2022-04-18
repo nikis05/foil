@@ -205,6 +205,7 @@ fn expand_create(db: &Type, config: &Config) -> TokenStream {
         .map(|(field_name, field_config)| expand_construct_field_expr(field_name, field_config));
 
     quote! {
+        #[automatically_derived]
         impl ::foil::entity::Create<#db> for #entity_ident {
             type Input<'q> = #input_ident<'q>;
 
@@ -297,6 +298,7 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
         .iter()
         .map(|db| {
             quote! {
+                #[automatically_derived]
                 impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #input_ident<'q> {
                     fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, #db> {
                         let mut values = foil::manager::InputRecord::new();
@@ -317,6 +319,7 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
             ),*
         }
 
+        #[automatically_derived]
         impl<'q> ::std::convert::From<&'q #entity_ident> for #input_ident<'q> {
             fn from(from: &'q #entity_ident) -> Self {
                 Self {

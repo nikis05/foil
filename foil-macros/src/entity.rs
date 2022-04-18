@@ -223,6 +223,7 @@ fn expand_entity(db: &Type, config: &Config) -> TokenStream {
     });
 
     quote! {
+        #[automatically_derived]
         impl ::foil::entity::Entity<#db> for #entity_ident {
             type Col = #col_ident;
             type Id = #id_type;
@@ -263,6 +264,7 @@ fn expand_from_record(db: &Type, config: &Config) -> TokenStream {
     });
 
     quote! {
+        #[automatically_derived]
         impl ::foil::manager::FromRecord<#db> for #entity_ident {
             fn from_record(record: &::foil::manager::Record<#db>) -> ::std::result::Result<Self, ::foil::manager::RecordError> {
                 ::std::result::Result::Ok(#entity_ident {
@@ -297,6 +299,7 @@ fn expand_col(config: &Config) -> TokenStream {
             ),*
         }
 
+        #[automatically_derived]
         impl ::foil::entity::Col for #col_ident {
             fn as_str(&self) -> &'static str {
                 match self {
@@ -328,6 +331,7 @@ fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
         .iter()
         .map(|db| {
             quote! {
+                #[automatically_derived]
                 impl<'q> ::foil::manager::IntoSelector<'q> for #selector_ident<'q> {
                     fn into_selector(self) -> ::foil::manager::Selector<'q, #db> {
                         let mut selector = ::foil::manager::Selector::new();
@@ -371,6 +375,7 @@ fn expand_lazy_columns(config: &Config) -> TokenStream {
         .map(|(_, field_config)| &field_config.col_name);
 
     quote! {
+        #[automatically_derived]
         impl #entity_ident {
             #(
                 pub async fn #field_names<

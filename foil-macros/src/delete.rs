@@ -9,6 +9,7 @@ pub fn derive_delete(input: &DeriveInput) -> TokenStream {
 
     quote! {
         #(
+            #[automatically_derived]
             impl ::foil::entity::Delete<#dbs> for #entity_ident {}
         )*
     }

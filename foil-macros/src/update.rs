@@ -160,6 +160,7 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
     });
 
     quote! {
+        #[automatically_derived]
         impl ::foil::entity::Update<#db> for #entity_ident {
             type Patch<'q> = #patch_ident<'q>;
 
@@ -191,6 +192,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
         .iter()
         .map(|db| {
             quote! {
+                #[automatically_derived]
                 impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #patch_ident<'q> {
                     fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, #db> {
                         let mut patch = ::foil::manager::InputRecord::new();
@@ -276,6 +278,7 @@ fn expand_setters(config: &Config) -> TokenStream {
         .collect::<TokenStream>();
 
     quote! {
+        #[automatically_derived]
         impl #entity_ident {
             #setters
         }
