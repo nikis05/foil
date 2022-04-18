@@ -143,7 +143,7 @@ impl<'q> From<&'q Character> for CharacterInput<'q> {
             id: Field::Set(from.id),
             name: &from.name,
             is_handsome: from.is_handsome,
-            father_name: Field::Set(from.father_name.as_deref()),
+            father_name: Field::Set(from.father_name.as_ref().map(::std::convert::AsRef::as_ref)),
         }
     }
 }

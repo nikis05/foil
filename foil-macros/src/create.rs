@@ -342,7 +342,7 @@ fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> Tok
     let mut expr = quote! { from.#field_name };
 
     if unwrap_option(&mut field_config.input_ty.clone()) {
-        expr = quote! { ::std::option::Option::as_deref(&#expr) };
+        expr = quote! { #expr.as_ref().map(|v| ::std::convert::AsRef::as_ref(v) ) };
     } else if !is_copy(&field_config.input_ty) {
         expr = quote! { &#expr };
     }
