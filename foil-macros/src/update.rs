@@ -196,9 +196,10 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
                         let mut patch = ::foil::manager::InputRecord::new();
                         #(
                             if let ::foil::entity::Field::Set(val) = self.#field_names {
-                                values.add_col(#col_names, ::std::boxed::Box::new(val));
+                                patch.add_col(#col_names, ::std::boxed::Box::new(val));
                             }
                         )*
+                        patch
                     }
                 }
             }
@@ -238,9 +239,9 @@ fn expand_setters(config: &Config) -> TokenStream {
             let field_names = config.fields.keys();
             let field_exprs = config.fields.keys().map(|other_field_name| {
                 if other_field_name == field_name {
-                    quote! { ::foil::entity::Field::Omit }
-                } else {
                     quote! { ::foil::entity::Field::Set(#field_name) }
+                } else {
+                    quote! { ::foil::entity::Field::Omit }
                 }
             });
 
@@ -256,7 +257,7 @@ fn expand_setters(config: &Config) -> TokenStream {
                 >(
                     &'e mut self,
                     manager: M,
-                    father_name: #input_ty,
+                    #field_name: #input_ty,
                 ) -> ::foil::manager::BoxFuture<'o, Result<(), M::Error>>
                 where
                     Self: ::foil::entity::Update<DB, Patch<'q> = #patch_ident<'q>>,
