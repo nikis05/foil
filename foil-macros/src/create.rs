@@ -366,7 +366,7 @@ fn expand_to_input_record_entry(field_name: &Ident, field_config: &FieldConfig) 
     let mut entry = quote! { values.add_col(#col_name, ::std::boxed::Box::new(#alias)); };
     if is_optional {
         entry = quote! {
-            if let ::foil::entity::Field::set(val) = self.#field_name {
+            if let ::foil::entity::Field::Set(val) = self.#field_name {
                 #entry
             }
         };

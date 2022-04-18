@@ -206,7 +206,7 @@ impl_manager_for_db_executor!(sqlx::MySql);
 #[cfg(feature = "mssql")]
 impl_manager_for_db_executor!(sqlx::Mssql);
 
-#[cfg(feature = "$DB")]
+#[cfg(feature = "postgres")]
 impl_manager_for_db_executor!(sqlx::Postgres);
 
 #[cfg(feature = "sqlite")]
