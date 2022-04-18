@@ -13,7 +13,7 @@ use crate::{
 };
 
 pub fn derive_update(input: DeriveInput) -> Result<TokenStream> {
-    let dbs = [parse2(TokenStream::from_str("::sqlx::Postgres").unwrap()).unwrap()];
+    let dbs = dbs!();
     let config = extract_config(input)?;
 
     let update = dbs
@@ -239,7 +239,7 @@ fn expand_setters(config: &Config) -> TokenStream {
             let setter_name = Ident::new(&format!("set_{}", field_name), Span::call_site());
             let input_ty = &field_config.input_ty;
             let q_lifetime = if contains_q_lifetime(input_ty) {
-                quote! { 'q: 'o }
+                quote! { 'q: 'o, }
             } else {
                 TokenStream::new()
             };
@@ -255,7 +255,6 @@ fn expand_setters(config: &Config) -> TokenStream {
             quote! {
                 fn #setter_name<
                     'm: 'o,
-                    //'q: 'o,
                     #q_lifetime
                     'e: 'o,
                     'o,

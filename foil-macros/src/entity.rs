@@ -332,7 +332,7 @@ fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
         .map(|db| {
             quote! {
                 #[automatically_derived]
-                impl<'q> ::foil::manager::IntoSelector<'q> for #selector_ident<'q> {
+                impl<'q> ::foil::manager::IntoSelector<'q, #db> for #selector_ident<'q> {
                     fn into_selector(self) -> ::foil::manager::Selector<'q, #db> {
                         let mut selector = ::foil::manager::Selector::new();
 
