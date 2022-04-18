@@ -353,7 +353,7 @@ fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
         #[derive(::std::default::Default)]
         #vis struct #selector_ident<'q> {
             #(
-                #field_names: ::foil::entity::Field<::foil::manager::FindOperator<#selector_field_types>>
+                pub #field_names: ::foil::entity::Field<::foil::manager::FindOperator<#selector_field_types>>
             ),*
         }
 

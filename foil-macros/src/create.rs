@@ -319,7 +319,7 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     quote! {
         #vis struct #input_ident<'q> {
             #(
-                #field_names: #field_input_types
+                pub #field_names: #field_input_types
             ),*
         }
 

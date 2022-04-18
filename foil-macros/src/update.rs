@@ -216,7 +216,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
         #[derive(::std::default::Default)]
         #vis struct #patch_ident<'q> {
             #(
-                #field_names: ::foil::entity::Field<#field_input_types>
+                pub #field_names: ::foil::entity::Field<#field_input_types>
             ),*
         }
 
