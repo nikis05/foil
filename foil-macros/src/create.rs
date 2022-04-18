@@ -7,7 +7,7 @@ use quote::quote;
 use std::{collections::BTreeMap, str::FromStr};
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Ident, Lit, LitStr,
-    Path, Result, Type,
+    Path, Result, Type, Visibility,
 };
 
 pub fn derive_create(input: DeriveInput) -> Result<TokenStream> {
@@ -29,6 +29,7 @@ pub fn derive_create(input: DeriveInput) -> Result<TokenStream> {
 
 struct Config {
     entity_ident: Ident,
+    vis: Visibility,
     input_ident: Ident,
     fields: BTreeMap<Ident, FieldConfig>,
 }
@@ -48,6 +49,7 @@ enum DefaultMode {
 fn extract_config(input: DeriveInput) -> Result<Config> {
     let input_span = input.span();
     let entity_ident = input.ident;
+    let vis = input.vis;
     let input_ident = Ident::new(&format!("{}Input", entity_ident), Span::call_site());
     let mut fields = BTreeMap::new();
 
@@ -125,6 +127,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 
         Ok(Config {
             entity_ident,
+            vis,
             input_ident,
             fields,
         })
@@ -274,6 +277,7 @@ fn expand_construct_field_expr(field_name: &Ident, field_config: &FieldConfig) -
 
 fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
+    let vis = &config.vis;
     let input_ident = &config.input_ident;
     let field_names = config.fields.keys().collect::<Vec<_>>();
     let field_input_types = config.fields.iter().map(|(_, field_config)| {
@@ -313,7 +317,7 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
         .collect::<TokenStream>();
 
     quote! {
-        struct #input_ident<'q> {
+        #vis struct #input_ident<'q> {
             #(
                 #field_names: #field_input_types
             ),*

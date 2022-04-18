@@ -4,7 +4,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Ident, Lit, LitStr,
-    Result, Type,
+    Result, Type, Visibility,
 };
 
 use crate::{
@@ -33,6 +33,7 @@ pub fn derive_update(input: DeriveInput) -> Result<TokenStream> {
 
 struct Config {
     entity_ident: Ident,
+    vis: Visibility,
     patch_ident: Ident,
     fields: BTreeMap<Ident, FieldConfig>,
     generate_setters: bool,
@@ -46,6 +47,7 @@ struct FieldConfig {
 fn extract_config(input: DeriveInput) -> Result<Config> {
     let input_span = input.span();
     let entity_ident = input.ident;
+    let vis = input.vis;
     let patch_ident = Ident::new(&format!("{}Patch", entity_ident), Span::call_site());
     let mut fields = BTreeMap::new();
 
@@ -107,6 +109,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 
         Ok(Config {
             entity_ident,
+            vis,
             patch_ident,
             fields,
             generate_setters,
@@ -177,6 +180,7 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
 
 fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
     let patch_ident = &config.patch_ident;
+    let vis = &config.vis;
     let field_names = config.fields.keys().collect::<Vec<_>>();
     let col_names = config
         .fields
@@ -210,7 +214,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
 
     quote! {
         #[derive(::std::default::Default)]
-        struct #patch_ident<'q> {
+        #vis struct #patch_ident<'q> {
             #(
                 #field_names: ::foil::entity::Field<#field_input_types>
             ),*
