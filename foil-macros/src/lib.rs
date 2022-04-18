@@ -13,6 +13,7 @@ use create::derive_create;
 use delete::derive_delete;
 use syn::{parse_macro_input, DeriveInput};
 use update::derive_update;
+use value::derive_value;
 
 macro_rules! dbs {
     () => {
@@ -42,6 +43,7 @@ mod entity;
 mod relations;
 mod types;
 mod update;
+mod value;
 
 #[proc_macro_derive(Entity, attributes(foil))]
 pub fn entity(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -71,6 +73,12 @@ pub fn update(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn delete(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     derive_delete(&input).into()
+}
+
+#[proc_macro_derive(Value)]
+pub fn value(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    derive_value(&input).into()
 }
 
 #[proc_macro]
