@@ -13,8 +13,8 @@ pub fn derive_value(input: &DeriveInput) -> TokenStream {
         {
             fn bind(
                 self: ::std::boxed::Box<Self>,
-                query: ::sqlx::Query<'q, DB, <DB as ::sqlx::HasArguments<'q>>::Arguments>,
-            ) -> ::sqlx::Query<'q, DB, <DB as ::sqlx::HasArguments<'q>>::Arguments> {
+                query: ::sqlx::query::Query<'q, DB, <DB as ::sqlx::database::HasArguments<'q>>::Arguments>,
+            ) -> ::sqlx::query::Query<'q, DB, <DB as ::sqlx::database::HasArguments<'q>>::Arguments> {
                 query.bind(*self)
             }
 
