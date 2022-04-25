@@ -209,6 +209,32 @@ impl<'q> ToInputRecord<'q, Sqlite> for CharacterPatch<'q> {
     }
 }
 
+pub trait CharacterSetters<DB: ::sqlx::Database>: Update<DB> {
+    fn set_name<'m: 'o, 'q: 'o, 'e: 'o, 'o, M: crate::Manager<'m, ::sqlx::Sqlite>>(
+        &'e mut self,
+        manager: M,
+        name: &'q str,
+    ) -> crate::manager::BoxFuture<'o, Result<(), M::Error>>;
+}
+
+impl CharacterSetters<::sqlx::Sqlite> for Character {
+    fn set_name<'m: 'o, 'q: 'o, 'e: 'o, 'o, M: crate::Manager<'m, ::sqlx::Sqlite>>(
+        &'e mut self,
+        manager: M,
+        name: &'q str,
+    ) -> crate::manager::BoxFuture<'o, Result<(), M::Error>> {
+        self.patch(
+            manager,
+            CharacterPatch {
+                id: Field::Omit,
+                name: Field::Set(name),
+                is_handsome: Field::Omit,
+                father_name: Field::Omit,
+            },
+        )
+    }
+}
+
 impl Delete<Sqlite> for Character {}
 
 async fn setup() -> MockManager {

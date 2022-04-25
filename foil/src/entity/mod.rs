@@ -20,15 +20,6 @@ use thiserror::Error;
 ))]
 mod test;
 
-// #[derive(Entity, Create)]
-// struct Character {
-//     id: u8,
-//     name: String,
-//     is_handsome: bool,
-//     #[foil(generated)]
-//     father_name: ::std::option::Option<String>,
-// }
-
 pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
     type Col: Col + Send;
     type Id: for<'q> Value<'q, DB> + Send;

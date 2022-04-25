@@ -1,10 +1,10 @@
 use crate::{
     attrs::Attrs,
-    types::{into_input_type, is_copy, is_string, unwrap_option, unwrap_vec},
+    types::{into_input_type, is_string, unwrap_option, unwrap_vec},
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use std::{collections::BTreeMap, str::FromStr};
+use std::str::FromStr;
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Ident, Lit, LitStr,
     Path, Result, Type, Visibility,
@@ -31,10 +31,11 @@ struct Config {
     entity_ident: Ident,
     vis: Visibility,
     input_ident: Ident,
-    fields: BTreeMap<Ident, FieldConfig>,
+    fields: Vec<FieldConfig>,
 }
 
 struct FieldConfig {
+    name: Ident,
     col_name: LitStr,
     default_mode: DefaultMode,
     ty: Type,
@@ -52,7 +53,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     let entity_ident = input.ident;
     let vis = input.vis;
     let input_ident = Ident::new(&format!("{}Input", entity_ident), Span::call_site());
-    let mut fields = BTreeMap::new();
+    let mut fields = Vec::new();
 
     let mut attrs = Attrs::extract(input.attrs)?;
 
@@ -89,13 +90,13 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
                 ));
             };
 
-            let config = extract_field_config(&name, ty, attrs)?;
+            let config = extract_field_config(name, ty, attrs)?;
 
-            fields.insert(name, config);
+            fields.push(config);
         }
     }
 
-    attrs.ignore(&["table", "setters"]);
+    attrs.ignore(&["table"]);
     attrs.done()?;
 
     if let Data::Struct(DataStruct {
@@ -110,12 +111,15 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 
             let attrs = Attrs::extract(field.attrs)?;
 
-            let config = extract_field_config(&name, ty, attrs)?;
+            let config = extract_field_config(name, ty, attrs)?;
 
-            fields.insert(name, config);
+            fields.push(config);
         }
 
-        if let Some(id_field) = fields.get_mut(&id_field_name) {
+        if let Some(id_field) = fields
+            .iter_mut()
+            .find(|field_config| field_config.name == id_field_name)
+        {
             if matches!(id_field.default_mode, DefaultMode::None) {
                 id_field.default_mode = DefaultMode::Generated;
             }
@@ -137,7 +141,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     }
 }
 
-fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<FieldConfig> {
+fn extract_field_config(name: Ident, ty: Type, mut attrs: Attrs) -> Result<FieldConfig> {
     let col_name = attrs
         .get_name_value("rename")?
         .map(|lit| {
@@ -179,6 +183,7 @@ fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<Fiel
     attrs.done()?;
 
     Ok(FieldConfig {
+        name,
         col_name,
         default_mode,
         ty,
@@ -189,18 +194,15 @@ fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<Fiel
 fn expand_create(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let input_ident = &config.input_ident;
-    let generated_col_names = config.fields.iter().filter_map(|(_, field_config)| {
+    let generated_col_names = config.fields.iter().filter_map(|field_config| {
         if let DefaultMode::Generated = field_config.default_mode {
             Some(&field_config.col_name)
         } else {
             None
         }
     });
-    let field_names = config.fields.keys();
-    let construct_field_exprs = config
-        .fields
-        .iter()
-        .map(|(field_name, field_config)| expand_construct_field_expr(field_name, field_config));
+    let field_names = config.fields.iter().map(|field_config| &field_config.name);
+    let construct_field_exprs = config.fields.iter().map(expand_construct_field_expr);
 
     quote! {
         #[automatically_derived]
@@ -229,7 +231,8 @@ fn expand_create(db: &Type, config: &Config) -> TokenStream {
     }
 }
 
-fn expand_construct_field_expr(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
+fn expand_construct_field_expr(field_config: &FieldConfig) -> TokenStream {
+    let field_name = &field_config.name;
     let col_name = &field_config.col_name;
     let is_optional = !matches!(field_config.default_mode, DefaultMode::None);
 
@@ -274,8 +277,12 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let vis = &config.vis;
     let input_ident = &config.input_ident;
-    let field_names = config.fields.keys().collect::<Vec<_>>();
-    let field_input_types = config.fields.iter().map(|(_, field_config)| {
+    let field_names = config
+        .fields
+        .iter()
+        .map(|field_config| &field_config.name)
+        .collect::<Vec<_>>();
+    let field_input_types = config.fields.iter().map(|field_config| {
         let input_ty = &field_config.input_ty;
         if matches!(field_config.default_mode, DefaultMode::None) {
             quote! { #input_ty }
@@ -283,14 +290,11 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
             quote! { ::foil::entity::Field<#input_ty> }
         }
     });
-    let field_from_exprs = config
-        .fields
-        .iter()
-        .map(|(field_name, field_config)| expand_from_field_expr(field_name, field_config));
+    let field_from_exprs = config.fields.iter().map(expand_from_field_expr);
     let to_input_record_entries = config
         .fields
         .iter()
-        .map(|(field_name, field_config)| expand_to_input_record_entry(field_name, field_config))
+        .map(expand_to_input_record_entry)
         .collect::<Vec<_>>();
 
     let to_input_record_impls = dbs
@@ -333,7 +337,8 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     }
 }
 
-fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
+fn expand_from_field_expr(field_config: &FieldConfig) -> TokenStream {
+    let field_name = &field_config.name;
     let mut expr = quote! { from.#field_name };
 
     if field_config.ty != field_config.input_ty {
@@ -356,7 +361,8 @@ fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> Tok
     expr
 }
 
-fn expand_to_input_record_entry(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
+fn expand_to_input_record_entry(field_config: &FieldConfig) -> TokenStream {
+    let field_name = &field_config.name;
     let col_name = &field_config.col_name;
     let is_optional = !matches!(field_config.default_mode, DefaultMode::None);
     let alias = if is_optional {

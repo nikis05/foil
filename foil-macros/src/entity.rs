@@ -1,9 +1,7 @@
-use std::{collections::BTreeMap, str::FromStr};
-
 use heck::{ToSnakeCase, ToUpperCamelCase};
-
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
+use std::str::FromStr;
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Lit, LitStr, Result,
     Type, Visibility,
@@ -47,10 +45,11 @@ struct Config {
     selector_ident: Ident,
     table_name: LitStr,
     id_field_name: Ident,
-    fields: BTreeMap<Ident, FieldConfig>,
+    fields: Vec<FieldConfig>,
 }
 
 struct FieldConfig {
+    name: Ident,
     col_name: LitStr,
     ty: Type,
     input_ty: Type,
@@ -62,7 +61,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     let entity_ident = input.ident;
     let vis = input.vis;
 
-    let mut fields = BTreeMap::new();
+    let mut fields = Vec::new();
 
     let mut attrs = Attrs::extract(input.attrs)?;
 
@@ -117,13 +116,12 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
                 ));
             };
 
-            let config = extract_field_config(&name, ty, attrs, true)?;
+            let config = extract_field_config(name, ty, attrs, true)?;
 
-            fields.insert(name, config);
+            fields.push(config);
         }
     }
 
-    attrs.ignore(&["setters"]);
     attrs.done()?;
 
     if let Data::Struct(DataStruct {
@@ -137,12 +135,15 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
             let ty = field.ty;
 
             let attrs = Attrs::extract(field.attrs)?;
-            let config = extract_field_config(&name, ty, attrs, false)?;
+            let config = extract_field_config(name, ty, attrs, false)?;
 
-            fields.insert(name, config);
+            fields.push(config);
         }
 
-        if !fields.contains_key(&id_field_name) {
+        if !fields
+            .iter()
+            .any(|field_config| field_config.name == id_field_name)
+        {
             return Err(Error::new(
                 id_field_name_span.unwrap_or(input_span),
                 &format!("field {} does not exist", id_field_name),
@@ -164,7 +165,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 }
 
 fn extract_field_config(
-    name: &Ident,
+    name: Ident,
     ty: Type,
     mut attrs: Attrs,
     is_lazy: bool,
@@ -191,6 +192,7 @@ fn extract_field_config(
     attrs.done()?;
 
     Ok(FieldConfig {
+        name,
         col_name,
         ty,
         input_ty,
@@ -204,10 +206,14 @@ fn expand_entity(db: &Type, config: &Config) -> TokenStream {
     let col_ident = &config.col_ident;
     let table_name = &config.table_name;
     let id_field_name = &config.id_field_name;
-    let id_field = config.fields.get(id_field_name).unwrap();
+    let id_field = config
+        .fields
+        .iter()
+        .find(|field_config| &field_config.name == id_field_name)
+        .unwrap();
     let id_type = &id_field.ty;
     let id_col_name = &id_field.col_name;
-    let col_names = config.fields.iter().filter_map(|(_, field_config)| {
+    let col_names = config.fields.iter().filter_map(|field_config| {
         if field_config.is_lazy {
             None
         } else {
@@ -247,8 +253,8 @@ fn expand_entity(db: &Type, config: &Config) -> TokenStream {
 
 fn expand_from_record(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
-    let field_names = config.fields.keys();
-    let col_names = config.fields.iter().filter_map(|(_, field_config)| {
+    let field_names = config.fields.iter().map(|field_config| &field_config.name);
+    let col_names = config.fields.iter().filter_map(|field_config| {
         if field_config.is_lazy {
             None
         } else {
@@ -277,7 +283,7 @@ fn expand_col(config: &Config) -> TokenStream {
     let col_names = config
         .fields
         .iter()
-        .map(|(_, field_config)| &field_config.col_name);
+        .map(|field_config| &field_config.col_name);
 
     let variants = col_names
         .clone()
@@ -308,16 +314,20 @@ fn expand_col(config: &Config) -> TokenStream {
 fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
     let vis = &config.vis;
     let selector_ident = &config.selector_ident;
-    let field_names = config.fields.keys().collect::<Vec<_>>();
+    let field_names = config
+        .fields
+        .iter()
+        .map(|field_config| &field_config.name)
+        .collect::<Vec<_>>();
     let selector_field_types = config
         .fields
         .iter()
-        .map(|(_, field_config)| &field_config.input_ty)
+        .map(|field_config| &field_config.input_ty)
         .collect::<Vec<_>>();
     let col_names = config
         .fields
         .iter()
-        .map(|(_, field_config)| &field_config.col_name)
+        .map(|field_config| &field_config.col_name)
         .collect::<Vec<_>>();
 
     let into_selector_impls = dbs
@@ -359,13 +369,13 @@ fn expand_lazy_columns(config: &Config) -> TokenStream {
     let lazy_fields = config
         .fields
         .iter()
-        .filter(|(_, field_config)| field_config.is_lazy)
+        .filter(|field_config| field_config.is_lazy)
         .collect::<Vec<_>>();
-    let field_names = lazy_fields.iter().map(|(field_name, _)| field_name);
-    let field_types = lazy_fields.iter().map(|(_, field_config)| &field_config.ty);
+    let field_names = lazy_fields.iter().map(|field_config| &field_config.name);
+    let field_types = lazy_fields.iter().map(|field_config| &field_config.ty);
     let col_names = lazy_fields
         .iter()
-        .map(|(_, field_config)| &field_config.col_name);
+        .map(|field_config| &field_config.col_name);
 
     quote! {
         #[automatically_derived]
