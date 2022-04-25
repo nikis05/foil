@@ -150,18 +150,11 @@ fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<Fiel
         .transpose()?
         .unwrap_or_else(|| LitStr::new(&name.to_string(), Span::call_site()));
 
-    let input_ty = attrs
-        .get_name_value("input_type")?
-        .map(|lit| {
-            if let Lit::Str(lit_str) = lit {
-                let ty = parse2(TokenStream::from_str(&lit_str.value())?)?;
-                Ok(ty)
-            } else {
-                Err(Error::new(lit.span(), "expected string literal"))
-            }
-        })
-        .transpose()?
-        .unwrap_or_else(|| into_input_type(ty.clone()));
+    let input_ty = if attrs.get_path("copy")? {
+        ty.clone()
+    } else {
+        into_input_type(ty.clone())
+    };
 
     let mut default_mode = DefaultMode::None;
 
@@ -343,15 +336,17 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
 fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
     let mut expr = quote! { from.#field_name };
 
-    let mut unwrapped = field_config.ty.clone();
-    if unwrap_option(&mut unwrapped) {
-        if is_string(&unwrapped) || unwrap_vec(&unwrapped).is_some() {
-            expr = quote! { #expr.as_ref().map(::std::convert::AsRef::as_ref)}
+    if field_config.ty != field_config.input_ty {
+        let mut unwrapped = field_config.ty.clone();
+        if unwrap_option(&mut unwrapped) {
+            if is_string(&unwrapped) || unwrap_vec(&unwrapped).is_some() {
+                expr = quote! { #expr.as_ref().map(::std::convert::AsRef::as_ref)}
+            } else {
+                expr = quote! { #expr.as_ref() };
+            }
         } else {
-            expr = quote! { #expr.as_ref() };
+            expr = quote! { &#expr };
         }
-    } else if field_config.ty != field_config.input_ty {
-        expr = quote! { &#expr };
     }
 
     if !matches!(field_config.default_mode, DefaultMode::None) {

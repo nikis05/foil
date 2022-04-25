@@ -181,18 +181,11 @@ fn extract_field_config(
         .transpose()?
         .unwrap_or_else(|| LitStr::new(&name.to_string(), Span::call_site()));
 
-    let input_ty = attrs
-        .get_name_value("input_type")?
-        .map(|lit| {
-            if let Lit::Str(lit_str) = lit {
-                let ty = parse2(TokenStream::from_str(&lit_str.value())?)?;
-                Ok(ty)
-            } else {
-                Err(Error::new(lit.span(), "expected string literal"))
-            }
-        })
-        .transpose()?
-        .unwrap_or_else(|| into_input_type(ty.clone()));
+    let input_ty = if attrs.get_path("copy")? {
+        ty.clone()
+    } else {
+        into_input_type(ty.clone())
+    };
 
     attrs.ignore(&["generated", "default", "default_with"]);
     attrs.done()?;
