@@ -58,21 +58,28 @@ pub fn is_copy(ty: &Type) -> bool {
 }
 
 fn to_borrowed_form(ty: &Type) -> Type {
-    if *ty == parse2(quote! { String }).unwrap()
-        || *ty == parse2(quote! { std::string::String }).unwrap()
-        || *ty == parse2(quote! { ::std::string::String}).unwrap()
-    {
+    if is_string(ty) {
         parse2(quote! { &'q str }).unwrap()
-    } else if let Some(wrapped) = unwrap_generic(
-        ty,
-        &parse2(quote! { std }).unwrap(),
-        &parse2(quote! { vec }).unwrap(),
-        "Vec",
-    ) {
+    } else if let Some(wrapped) = unwrap_vec(ty) {
         parse2(quote! { &'q[ #wrapped ] }).unwrap()
     } else {
         parse2(quote! { &'q #ty }).unwrap()
     }
+}
+
+pub fn is_string(ty: &Type) -> bool {
+    *ty == parse2(quote! { String }).unwrap()
+        || *ty == parse2(quote! { std::string::String }).unwrap()
+        || *ty == parse2(quote! { ::std::string::String}).unwrap()
+}
+
+pub fn unwrap_vec(ty: &Type) -> Option<Type> {
+    unwrap_generic(
+        ty,
+        &parse2(quote! { std }).unwrap(),
+        &parse2(quote! { vec }).unwrap(),
+        "Vec",
+    )
 }
 
 fn unwrap_generic(

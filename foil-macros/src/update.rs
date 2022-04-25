@@ -153,9 +153,7 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
     let patch_ident = &config.patch_ident;
     let field_names = config.fields.keys();
     let field_exprs = config.fields.iter().map(|(_, field_config)| {
-        if is_copy(&field_config.input_ty) {
-            quote! { val }
-        } else if unwrap_option(&mut field_config.input_ty.clone()) {
+        if unwrap_option(&mut field_config.input_ty.clone()) {
             quote! { val.map(::std::borrow::ToOwned::to_owned) }
         } else {
             quote!(::std::borrow::ToOwned::to_owned(val))

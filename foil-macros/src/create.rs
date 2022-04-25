@@ -1,6 +1,6 @@
 use crate::{
     attrs::Attrs,
-    types::{into_input_type, is_copy, unwrap_option},
+    types::{into_input_type, is_copy, is_string, unwrap_option, unwrap_vec},
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -37,6 +37,7 @@ struct Config {
 struct FieldConfig {
     col_name: LitStr,
     default_mode: DefaultMode,
+    ty: Type,
     input_ty: Type,
 }
 
@@ -88,7 +89,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
                 ));
             };
 
-            let config = extract_field_config(&name, &ty, attrs)?;
+            let config = extract_field_config(&name, ty, attrs)?;
 
             fields.insert(name, config);
         }
@@ -109,7 +110,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 
             let attrs = Attrs::extract(field.attrs)?;
 
-            let config = extract_field_config(&name, &ty, attrs)?;
+            let config = extract_field_config(&name, ty, attrs)?;
 
             fields.insert(name, config);
         }
@@ -136,7 +137,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     }
 }
 
-fn extract_field_config(name: &Ident, ty: &Type, mut attrs: Attrs) -> Result<FieldConfig> {
+fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<FieldConfig> {
     let col_name = attrs
         .get_name_value("rename")?
         .map(|lit| {
@@ -187,6 +188,7 @@ fn extract_field_config(name: &Ident, ty: &Type, mut attrs: Attrs) -> Result<Fie
     Ok(FieldConfig {
         col_name,
         default_mode,
+        ty,
         input_ty,
     })
 }
@@ -244,9 +246,7 @@ fn expand_construct_field_expr(field_name: &Ident, field_config: &FieldConfig) -
         quote! { input.#field_name }
     };
 
-    let owned_expr = if is_copy(&field_config.input_ty) {
-        alias
-    } else if unwrap_option(&mut field_config.input_ty.clone()) {
+    let owned_expr = if unwrap_option(&mut field_config.input_ty.clone()) {
         quote! { #alias.map(::std::borrow::ToOwned::to_owned) }
     } else {
         quote! { ::std::borrow::ToOwned::to_owned(#alias)}
@@ -341,14 +341,14 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
 fn expand_from_field_expr(field_name: &Ident, field_config: &FieldConfig) -> TokenStream {
     let mut expr = quote! { from.#field_name };
 
-    let mut unwrapped = field_config.input_ty.clone();
+    let mut unwrapped = field_config.ty.clone();
     if unwrap_option(&mut unwrapped) {
-        if unwrapped == parse2(quote! { &'q str }).unwrap() {
+        if is_string(&unwrapped) || unwrap_vec(&unwrapped).is_some() {
             expr = quote! { #expr.as_ref().map(::std::convert::AsRef::as_ref)}
         } else {
             expr = quote! { #expr.as_ref() };
         }
-    } else if !is_copy(&field_config.input_ty) {
+    } else if field_config.ty != field_config.input_ty {
         expr = quote! { &#expr };
     }
 
