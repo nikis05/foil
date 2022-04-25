@@ -295,7 +295,6 @@ fn expand_setter(config: &Config, field_config: &FieldConfig, expand_impl: bool)
             'e: 'o,
             'o,
             M: ::foil::manager::Manager<'m, DB>,
-            DB: ::sqlx::Database,
         >(
             &'e mut self,
             manager: M,

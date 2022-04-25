@@ -136,12 +136,10 @@ pub fn contains_q_lifetime(ty: &Type) -> bool {
         Type::Paren(ty) => contains_q_lifetime(&ty.elem),
         Type::Path(type_path) => type_path.path.segments.iter().any(|segment| {
             if let PathArguments::AngleBracketed(arguments) = &segment.arguments {
-                arguments.args.iter().any(|argument| {
-                    if let GenericArgument::Lifetime(life) = argument {
-                        life.ident == "q"
-                    } else {
-                        false
-                    }
+                arguments.args.iter().any(|argument| match argument {
+                    GenericArgument::Lifetime(life) => life.ident == "q",
+                    GenericArgument::Type(inner_ty) => contains_q_lifetime(inner_ty),
+                    _ => false,
                 })
             } else {
                 false
