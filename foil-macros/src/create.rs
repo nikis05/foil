@@ -37,7 +37,7 @@ struct Config {
 struct FieldConfig {
     name: Ident,
     col_name: LitStr,
-    default_mode: DefaultMode,
+    generated: bool,
     ty: Type,
     input_ty: Type,
 }
@@ -120,9 +120,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
             .iter_mut()
             .find(|field_config| field_config.name == id_field_name)
         {
-            if matches!(id_field.default_mode, DefaultMode::None) {
-                id_field.default_mode = DefaultMode::Generated;
-            }
+            id_field.generated = true;
         } else {
             return Err(Error::new(
                 id_field_name_span.unwrap_or(input_span),
@@ -160,32 +158,14 @@ fn extract_field_config(name: Ident, ty: Type, mut attrs: Attrs) -> Result<Field
         into_input_type(ty.clone())
     };
 
-    let mut default_mode = DefaultMode::None;
-
-    if attrs.get_path("default")? {
-        default_mode =
-            DefaultMode::DefaultFn(parse2(quote! { ::std::default::Default::default }).unwrap());
-    }
-
-    if let Some(lit) = attrs.get_name_value("default_with")? {
-        if let Lit::Str(lit_str) = lit {
-            default_mode =
-                DefaultMode::DefaultFn(parse2(TokenStream::from_str(&lit_str.value())?)?);
-        } else {
-            return Err(Error::new(lit.span(), "expected string literal"));
-        }
-    }
-
-    if attrs.get_path("generated")? {
-        default_mode = DefaultMode::Generated;
-    }
+    let generated = attrs.get_path("generated")?;
 
     attrs.done()?;
 
     Ok(FieldConfig {
         name,
         col_name,
-        default_mode,
+        generated,
         ty,
         input_ty,
     })
@@ -195,7 +175,7 @@ fn expand_create(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let input_ident = &config.input_ident;
     let generated_col_names = config.fields.iter().filter_map(|field_config| {
-        if let DefaultMode::Generated = field_config.default_mode {
+        if field_config.generated {
             Some(&field_config.col_name)
         } else {
             None
@@ -234,9 +214,9 @@ fn expand_create(db: &Type, config: &Config) -> TokenStream {
 fn expand_construct_field_expr(field_config: &FieldConfig) -> TokenStream {
     let field_name = &field_config.name;
     let col_name = &field_config.col_name;
-    let is_optional = !matches!(field_config.default_mode, DefaultMode::None);
+    let generated = field_config.generated;
 
-    let alias = if is_optional {
+    let alias = if generated {
         quote! { val }
     } else {
         quote! { input.#field_name }
@@ -250,26 +230,16 @@ fn expand_construct_field_expr(field_config: &FieldConfig) -> TokenStream {
         quote! { ::std::borrow::ToOwned::to_owned(#alias)}
     };
 
-    match &field_config.default_mode {
-        DefaultMode::None => owned_expr,
-        DefaultMode::Generated => {
-            quote! {
-                if let ::foil::entity::Field::Set(val) = input.#field_name {
-                    #owned_expr
-                } else {
-                    generated.col(#col_name)?
-                }
+    if generated {
+        quote! {
+            if let ::foil::entity::Field::Set(val) = input.#field_name {
+                #owned_expr
+            } else {
+                generated.col(#col_name)?
             }
         }
-        DefaultMode::DefaultFn(path) => {
-            quote! {
-                if let ::foil::entity::Field::Set(val) = input.#field_name {
-                    #owned_expr
-                } else {
-                    #path()
-                }
-            }
-        }
+    } else {
+        owned_expr
     }
 }
 
@@ -284,10 +254,10 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
         .collect::<Vec<_>>();
     let field_input_types = config.fields.iter().map(|field_config| {
         let input_ty = &field_config.input_ty;
-        if matches!(field_config.default_mode, DefaultMode::None) {
-            quote! { #input_ty }
-        } else {
+        if field_config.generated {
             quote! { ::foil::entity::Field<#input_ty> }
+        } else {
+            quote! { #input_ty }
         }
     });
     let field_from_exprs = config.fields.iter().map(expand_from_field_expr);
@@ -354,7 +324,7 @@ fn expand_from_field_expr(field_config: &FieldConfig) -> TokenStream {
         }
     }
 
-    if !matches!(field_config.default_mode, DefaultMode::None) {
+    if field_config.generated {
         expr = quote! { ::foil::entity::Field::Set(#expr) }
     }
 
@@ -364,15 +334,15 @@ fn expand_from_field_expr(field_config: &FieldConfig) -> TokenStream {
 fn expand_to_input_record_entry(field_config: &FieldConfig) -> TokenStream {
     let field_name = &field_config.name;
     let col_name = &field_config.col_name;
-    let is_optional = !matches!(field_config.default_mode, DefaultMode::None);
-    let alias = if is_optional {
+    let generated = field_config.generated;
+    let alias = if generated {
         quote! { val }
     } else {
         quote! { self.#field_name }
     };
 
     let mut entry = quote! { values.add_col(#col_name, ::std::boxed::Box::new(#alias)); };
-    if is_optional {
+    if generated {
         entry = quote! {
             if let ::foil::entity::Field::Set(val) = self.#field_name {
                 #entry

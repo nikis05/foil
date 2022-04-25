@@ -188,7 +188,7 @@ fn extract_field_config(
         into_input_type(ty.clone())
     };
 
-    attrs.ignore(&["generated", "default", "default_with"]);
+    attrs.ignore(&["generated"]);
     attrs.done()?;
 
     Ok(FieldConfig {
