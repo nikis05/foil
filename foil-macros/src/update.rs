@@ -222,14 +222,13 @@ fn expand_setters(db: &Type, config: &Config) -> TokenStream {
     let vis = &config.vis;
     let setters_ident = Ident::new(&format!("{}Setters", entity_ident), Span::call_site());
 
-    let setter_signatures = config
-        .fields
-        .iter()
-        .map(|field_config| expand_setter(config, field_config, false));
+    let setter_signatures = config.fields.iter().map(|field_config| {
+        expand_setter(config, field_config, false, &parse2(quote! { DB }).unwrap())
+    });
     let setters = config
         .fields
         .iter()
-        .map(|field_config| expand_setter(config, field_config, true));
+        .map(|field_config| expand_setter(config, field_config, true, db));
 
     quote! {
         #[automatically_derived]
@@ -248,7 +247,12 @@ fn expand_setters(db: &Type, config: &Config) -> TokenStream {
     }
 }
 
-fn expand_setter(config: &Config, field_config: &FieldConfig, expand_impl: bool) -> TokenStream {
+fn expand_setter(
+    config: &Config,
+    field_config: &FieldConfig,
+    expand_impl: bool,
+    db: &Type,
+) -> TokenStream {
     let patch_ident = &config.patch_ident;
     let field_name = &field_config.name;
     let setter_name = Ident::new(&format!("set_{}", field_name), Span::call_site());
@@ -294,7 +298,7 @@ fn expand_setter(config: &Config, field_config: &FieldConfig, expand_impl: bool)
             #q_lifetime
             'e: 'o,
             'o,
-            M: ::foil::manager::Manager<'m, DB>,
+            M: ::foil::manager::Manager<'m, #db>,
         >(
             &'e mut self,
             manager: M,
