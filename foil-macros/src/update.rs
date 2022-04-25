@@ -42,6 +42,7 @@ struct Config {
 struct FieldConfig {
     col_name: LitStr,
     input_ty: Type,
+    ty: Type,
 }
 
 fn extract_config(input: DeriveInput) -> Result<Config> {
@@ -71,7 +72,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
                 ));
             };
 
-            let config = extract_field_config(&name, &ty, attrs)?;
+            let config = extract_field_config(&name, ty, attrs)?;
 
             fields.insert(name, config);
         }
@@ -102,7 +103,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
 
             let attrs = Attrs::extract(field.attrs)?;
 
-            let config = extract_field_config(&name, &ty, attrs)?;
+            let config = extract_field_config(&name, ty, attrs)?;
 
             fields.insert(name, config);
         }
@@ -119,7 +120,7 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
     }
 }
 
-fn extract_field_config(name: &Ident, ty: &Type, mut attrs: Attrs) -> Result<FieldConfig> {
+fn extract_field_config(name: &Ident, ty: Type, mut attrs: Attrs) -> Result<FieldConfig> {
     let col_name = attrs
         .get_name_value("rename")?
         .map(|lit| {
@@ -145,7 +146,11 @@ fn extract_field_config(name: &Ident, ty: &Type, mut attrs: Attrs) -> Result<Fie
         .transpose()?
         .unwrap_or_else(|| into_input_type(ty.clone()));
 
-    Ok(FieldConfig { col_name, input_ty })
+    Ok(FieldConfig {
+        col_name,
+        input_ty,
+        ty,
+    })
 }
 
 fn expand_update(db: &Type, config: &Config) -> TokenStream {
@@ -153,7 +158,9 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
     let patch_ident = &config.patch_ident;
     let field_names = config.fields.keys();
     let field_exprs = config.fields.iter().map(|(_, field_config)| {
-        if unwrap_option(&mut field_config.input_ty.clone()) {
+        if field_config.input_ty == field_config.ty {
+            quote! { val }
+        } else if unwrap_option(&mut field_config.input_ty.clone()) {
             quote! { val.map(::std::borrow::ToOwned::to_owned) }
         } else {
             quote!(::std::borrow::ToOwned::to_owned(val))

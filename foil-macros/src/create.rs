@@ -246,7 +246,9 @@ fn expand_construct_field_expr(field_name: &Ident, field_config: &FieldConfig) -
         quote! { input.#field_name }
     };
 
-    let owned_expr = if unwrap_option(&mut field_config.input_ty.clone()) {
+    let owned_expr = if field_config.ty == field_config.input_ty {
+        quote! { #alias }
+    } else if unwrap_option(&mut field_config.input_ty.clone()) {
         quote! { #alias.map(::std::borrow::ToOwned::to_owned) }
     } else {
         quote! { ::std::borrow::ToOwned::to_owned(#alias)}
