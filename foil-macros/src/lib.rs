@@ -88,5 +88,11 @@ pub fn selector(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro]
 pub fn patch(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as PatchInput);
-    expand_patch(input).into()
+    expand_patch(input, false).into()
+}
+
+#[proc_macro]
+pub fn patch_opt(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as PatchInput);
+    expand_patch(input, true).into()
 }
