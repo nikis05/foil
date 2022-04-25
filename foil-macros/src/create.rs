@@ -7,7 +7,7 @@ use quote::quote;
 use std::str::FromStr;
 use syn::{
     parse2, spanned::Spanned, Data, DataStruct, DeriveInput, Error, Fields, Ident, Lit, LitStr,
-    Path, Result, Type, Visibility,
+    Result, Type, Visibility,
 };
 
 pub fn derive_create(input: DeriveInput) -> Result<TokenStream> {
@@ -40,12 +40,6 @@ struct FieldConfig {
     generated: bool,
     ty: Type,
     input_ty: Type,
-}
-
-enum DefaultMode {
-    None,
-    DefaultFn(Path),
-    Generated,
 }
 
 fn extract_config(input: DeriveInput) -> Result<Config> {
