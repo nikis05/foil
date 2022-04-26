@@ -1,6 +1,6 @@
 use crate::{
     attrs::Attrs,
-    types::{into_input_type, is_string, unwrap_option, unwrap_vec},
+    types::{contains_q_lifetime, into_input_type, is_string, unwrap_option, unwrap_vec},
 };
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
@@ -31,6 +31,7 @@ struct Config {
     entity_ident: Ident,
     vis: Visibility,
     input_ident: Ident,
+    input_is_generic: bool,
     fields: Vec<FieldConfig>,
 }
 
@@ -122,10 +123,15 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
             ));
         }
 
+        let input_is_generic = fields
+            .iter()
+            .any(|field_config| contains_q_lifetime(&field_config.input_ty));
+
         Ok(Config {
             entity_ident,
             vis,
             input_ident,
+            input_is_generic,
             fields,
         })
     } else {
@@ -168,6 +174,11 @@ fn extract_field_config(name: Ident, ty: Type, mut attrs: Attrs) -> Result<Field
 fn expand_create(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let input_ident = &config.input_ident;
+    let input_type = if config.input_is_generic {
+        quote! { #input_ident<'q> }
+    } else {
+        quote! { #input_ident }
+    };
     let generated_col_names = config.fields.iter().filter_map(|field_config| {
         if field_config.generated {
             Some(&field_config.col_name)
@@ -181,7 +192,7 @@ fn expand_create(db: &Type, config: &Config) -> TokenStream {
     quote! {
         #[automatically_derived]
         impl ::foil::entity::Create<#db> for #entity_ident {
-            type Input<'q> = #input_ident<'q>;
+            type Input<'q> = #input_type;
 
             fn generated_col_names() -> &'static [&'static str] {
                 &[
@@ -241,6 +252,11 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let vis = &config.vis;
     let input_ident = &config.input_ident;
+    let input_type = if config.input_is_generic {
+        quote! { #input_ident<'q> }
+    } else {
+        quote! { #input_ident }
+    };
     let field_names = config
         .fields
         .iter()
@@ -266,7 +282,7 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
         .map(|db| {
             quote! {
                 #[automatically_derived]
-                impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #input_ident<'q> {
+                impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #input_type {
                     fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, #db> {
                         let mut values = foil::manager::InputRecord::new();
                         #(
@@ -280,14 +296,14 @@ fn expand_input(dbs: &[Type], config: &Config) -> TokenStream {
         .collect::<TokenStream>();
 
     quote! {
-        #vis struct #input_ident<'q> {
+        #vis struct #input_type {
             #(
                 pub #field_names: #field_input_types
             ),*
         }
 
         #[automatically_derived]
-        impl<'q> ::std::convert::From<&'q #entity_ident> for #input_ident<'q> {
+        impl<'q> ::std::convert::From<&'q #entity_ident> for #input_type {
             fn from(from: &'q #entity_ident) -> Self {
                 Self {
                     #(

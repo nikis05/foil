@@ -313,8 +313,9 @@ pub fn expand_patch(input: PatchInput, opt: bool) -> TokenStream {
                         ::foil::entity::Field::Set(#field_values)
                     } else {
                         ::foil::entity::Field::Omit
-                    }
+                    },
                 )*
+                ..::std::default::Default::default()
             }
         }
     } else {

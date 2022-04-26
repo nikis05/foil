@@ -7,7 +7,10 @@ use syn::{
     Type, Visibility,
 };
 
-use crate::{attrs::Attrs, types::into_input_type};
+use crate::{
+    attrs::Attrs,
+    types::{contains_q_lifetime, into_input_type},
+};
 
 pub fn derive_entity(input: DeriveInput) -> Result<TokenStream> {
     let dbs = [parse2(TokenStream::from_str("::sqlx::Postgres").unwrap()).unwrap()];
@@ -43,6 +46,7 @@ struct Config {
     vis: Visibility,
     col_ident: Ident,
     selector_ident: Ident,
+    selector_is_generic: bool,
     table_name: LitStr,
     id_field_name: Ident,
     fields: Vec<FieldConfig>,
@@ -150,11 +154,16 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
             ));
         }
 
+        let selector_is_generic = fields
+            .iter()
+            .any(|field_config| contains_q_lifetime(&field_config.input_ty));
+
         Ok(Config {
             entity_ident,
             vis,
             col_ident,
             selector_ident,
+            selector_is_generic,
             table_name,
             id_field_name,
             fields,
@@ -203,6 +212,11 @@ fn extract_field_config(
 fn expand_entity(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let selector_ident = &config.selector_ident;
+    let selector_type = if config.selector_is_generic {
+        quote! { #selector_ident<'q>}
+    } else {
+        quote! { #selector_ident }
+    };
     let col_ident = &config.col_ident;
     let table_name = &config.table_name;
     let id_field_name = &config.id_field_name;
@@ -226,7 +240,7 @@ fn expand_entity(db: &Type, config: &Config) -> TokenStream {
         impl ::foil::entity::Entity<#db> for #entity_ident {
             type Col = #col_ident;
             type Id = #id_type;
-            type Selector<'q> = #selector_ident<'q>;
+            type Selector<'q> = #selector_type;
 
             fn table_name() -> &'static str {
                 #table_name
@@ -314,6 +328,11 @@ fn expand_col(config: &Config) -> TokenStream {
 fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
     let vis = &config.vis;
     let selector_ident = &config.selector_ident;
+    let selector_type = if config.selector_is_generic {
+        quote! { #selector_ident<'q> }
+    } else {
+        quote! { #selector_ident }
+    };
     let field_names = config
         .fields
         .iter()
@@ -335,7 +354,7 @@ fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
         .map(|db| {
             quote! {
                 #[automatically_derived]
-                impl<'q> ::foil::manager::IntoSelector<'q, #db> for #selector_ident<'q> {
+                impl<'q> ::foil::manager::IntoSelector<'q, #db> for #selector_type {
                     fn into_selector(self) -> ::foil::manager::Selector<'q, #db> {
                         let mut selector = ::foil::manager::Selector::new();
 
@@ -354,7 +373,7 @@ fn expand_selector(dbs: &[Type], config: &Config) -> TokenStream {
 
     quote! {
         #[derive(::std::default::Default)]
-        #vis struct #selector_ident<'q> {
+        #vis struct #selector_type {
             #(
                 pub #field_names: ::foil::entity::Field<::foil::manager::FindOperator<#selector_field_types>>
             ),*

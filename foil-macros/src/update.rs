@@ -36,6 +36,7 @@ struct Config {
     entity_ident: Ident,
     vis: Visibility,
     patch_ident: Ident,
+    patch_is_generic: bool,
     fields: Vec<FieldConfig>,
 }
 
@@ -99,10 +100,15 @@ fn extract_config(input: DeriveInput) -> Result<Config> {
             fields.push(config);
         }
 
+        let patch_is_generic = fields
+            .iter()
+            .any(|field_config| contains_q_lifetime(&field_config.input_ty));
+
         Ok(Config {
             entity_ident,
             vis,
             patch_ident,
+            patch_is_generic,
             fields,
         })
     } else {
@@ -140,6 +146,11 @@ fn extract_field_config(name: Ident, ty: Type, mut attrs: Attrs) -> Result<Field
 fn expand_update(db: &Type, config: &Config) -> TokenStream {
     let entity_ident = &config.entity_ident;
     let patch_ident = &config.patch_ident;
+    let patch_type = if config.patch_is_generic {
+        quote! { #patch_ident<'q> }
+    } else {
+        quote! { #patch_ident }
+    };
     let field_names = config.fields.iter().map(|field_config| &field_config.name);
     let field_exprs = config.fields.iter().map(|field_config| {
         if field_config.input_ty == field_config.ty {
@@ -154,7 +165,7 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
     quote! {
         #[automatically_derived]
         impl ::foil::entity::Update<#db> for #entity_ident {
-            type Patch<'q> = #patch_ident<'q>;
+            type Patch<'q> = #patch_type;
 
             fn apply_patch(&mut self, patch: Self::Patch<'_>) {
                 #(
@@ -169,6 +180,11 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
 
 fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
     let patch_ident = &config.patch_ident;
+    let patch_type = if config.patch_is_generic {
+        quote! { #patch_ident<'q> }
+    } else {
+        quote! { #patch_ident }
+    };
     let vis = &config.vis;
     let field_names = config
         .fields
@@ -190,7 +206,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
         .map(|db| {
             quote! {
                 #[automatically_derived]
-                impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #patch_ident<'q> {
+                impl<'q> ::foil::manager::ToInputRecord<'q, #db> for #patch_type {
                     fn to_input_record(&self) -> ::foil::manager::InputRecord<'q, #db> {
                         let mut patch = ::foil::manager::InputRecord::new();
                         #(
@@ -207,7 +223,7 @@ fn expand_patch(dbs: &[Type], config: &Config) -> TokenStream {
 
     quote! {
         #[derive(::std::default::Default)]
-        #vis struct #patch_ident<'q> {
+        #vis struct #patch_type<'q> {
             #(
                 pub #field_names: ::foil::entity::Field<#field_input_types>
             ),*
