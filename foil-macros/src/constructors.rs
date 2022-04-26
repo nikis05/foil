@@ -309,7 +309,7 @@ pub fn expand_patch(input: PatchInput, opt: bool) -> TokenStream {
         quote! {
             #patch_ident {
                 #(
-                    #field_names: if let ::std::option::Option::Some(val) = #field_values {
+                    #field_names: if let ::std::option::Option::Some(#field_names) = #field_values {
                         ::foil::entity::Field::Set(#field_values)
                     } else {
                         ::foil::entity::Field::Omit
