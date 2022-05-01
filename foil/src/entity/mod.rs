@@ -22,7 +22,7 @@ mod test;
 
 pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
     type Col: Col + Send;
-    type Id: for<'q> Value<'q, DB> + Send;
+    type Id: for<'q> Value<'q, DB> + Send + Clone;
     type Selector<'q>: IntoSelector<'q, DB> + Default + Send;
 
     fn table_name() -> &'static str;
