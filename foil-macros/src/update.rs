@@ -319,7 +319,7 @@ fn expand_setter(
             &'e mut self,
             manager: M,
             #field_name: #input_ty,
-        ) -> ::foil::manager::BoxFuture<'o, Result<(), M::Error>>
+        ) -> ::foil::manager::BoxFuture<'o, ::std::result::Result<(), M::Error>>
         #impl_
     }
 }
