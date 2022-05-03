@@ -227,6 +227,12 @@ fn create_sqlx_query<'s, 'q: 's, DB: Database>(
 
     let mut sqlx_query = sqlx::query(sql);
 
+    for input_record in input_records {
+        for (_, val) in input_record.into_cols() {
+            sqlx_query = val.bind(sqlx_query);
+        }
+    }
+
     for selector in selectors {
         for (_, op) in selector.into_cols() {
             match op {
@@ -237,12 +243,6 @@ fn create_sqlx_query<'s, 'q: 's, DB: Database>(
                     }
                 }
             }
-        }
-    }
-
-    for input_record in input_records {
-        for (_, val) in input_record.into_cols() {
-            sqlx_query = val.bind(sqlx_query);
         }
     }
 
