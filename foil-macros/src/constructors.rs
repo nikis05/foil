@@ -133,9 +133,7 @@ impl Parse for NeOperator {
 struct InOperator {
     #[allow(dead_code)]
     ident: Ident,
-    #[allow(dead_code)]
-    paren: Paren,
-    values: Punctuated<Expr, Token![,]>,
+    values: InValues,
 }
 
 impl Parse for InOperator {
@@ -145,11 +143,9 @@ impl Parse for InOperator {
         if ident != "IN" {
             return Err(Error::new(ident.span(), "expected IN"));
         }
-        let content;
         Ok(Self {
             ident,
-            paren: parenthesized!(content in input),
-            values: content.parse_terminated(Expr::parse)?,
+            values: input.parse()?,
         })
     }
 }
@@ -158,9 +154,7 @@ impl Parse for InOperator {
 struct NotInOperator {
     #[allow(dead_code)]
     ident: Ident,
-    #[allow(dead_code)]
-    paren: Paren,
-    values: Punctuated<Expr, Token![,]>,
+    values: InValues,
 }
 
 impl Parse for NotInOperator {
@@ -170,11 +164,44 @@ impl Parse for NotInOperator {
         if ident != "NOT_IN" {
             return Err(Error::new(ident.span(), "expected NOT_IN"));
         }
-        let content;
         Ok(Self {
             ident,
-            paren: parenthesized!(content in input),
-            values: content.parse_terminated(Expr::parse)?,
+            values: input.parse()?,
+        })
+    }
+}
+
+#[derive(Clone)]
+enum InValues {
+    List {
+        #[allow(dead_code)]
+        paren: Paren,
+        values: Punctuated<Expr, Token![,]>,
+    },
+    Vec {
+        #[allow(dead_code)]
+        paren: Paren,
+        #[allow(dead_code)]
+        spread_token: Token![..],
+        expr: Box<Expr>,
+    },
+}
+
+impl Parse for InValues {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+        let paren = parenthesized!(content in input);
+        Ok(if content.peek(Token![..]) {
+            Self::Vec {
+                paren,
+                spread_token: content.parse()?,
+                expr: content.parse()?,
+            }
+        } else {
+            Self::List {
+                paren,
+                values: content.parse_terminated(Expr::parse)?,
+            }
         })
     }
 }
@@ -204,26 +231,48 @@ pub fn expand_selector(input: SelectorInput) -> TokenStream {
                 let value = &ne_operator.value;
                 quote! { ::foil::manager::FindOperator::Ne(#value) }
             }
-            FindOperator::In(in_operator) => {
-                let values = in_operator.values.iter();
-                quote! {
-                    ::foil::manager::FindOperator::In(::std::vec![
-                        #(
-                            #values
-                        ),*
-                    ])
+            FindOperator::In(in_operator) => match in_operator.values {
+                InValues::List { paren: _, values } => {
+                    let values = values.iter();
+                    quote! {
+                        ::foil::manager::FindOperator::In(::std::vec![
+                            #(
+                                #values
+                            ),*
+                        ])
+                    }
                 }
-            }
-            FindOperator::NotIn(not_in_operator) => {
-                let values = not_in_operator.values.iter();
-                quote! {
-                    ::foil::manager::FindOperator::NotIn(::std::vec![
-                        #(
-                            #values
-                        ),*
-                    ])
+                InValues::Vec {
+                    paren: _,
+                    spread_token: _,
+                    expr,
+                } => {
+                    quote! {
+                        ::foil::manager::FindOperator::In(#expr)
+                    }
                 }
-            }
+            },
+            FindOperator::NotIn(not_in_operator) => match not_in_operator.values {
+                InValues::List { paren: _, values } => {
+                    let values = values.iter();
+                    quote! {
+                        ::foil::manager::FindOperator::In(::std::vec![
+                            #(
+                                #values
+                            ),*
+                        ])
+                    }
+                }
+                InValues::Vec {
+                    paren: _,
+                    spread_token: _,
+                    expr,
+                } => {
+                    quote! {
+                        ::foil::manager::FindOperator::In(#expr)
+                    }
+                }
+            },
         }
     });
 
