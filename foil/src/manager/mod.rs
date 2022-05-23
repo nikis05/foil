@@ -61,6 +61,14 @@ pub trait Manager<'m, DB: Database>: Send {
     where
         'm: 'o,
         'q: 'o;
+
+    fn query<'q, 'o, Q: sqlx::Execute<'q, DB> + 'q>(
+        self,
+        query: Q,
+    ) -> BoxStream<'o, Result<Record<DB>, Self::Error>>
+    where
+        'm: 'o,
+        'q: 'o;
 }
 
 pub struct SelectQuery<'q, DB: Database> {

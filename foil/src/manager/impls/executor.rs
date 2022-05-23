@@ -1,9 +1,9 @@
-use sqlx::{database::HasArguments, Database, Decode, Executor, Row, Type};
-
 use crate::{
     manager::{CountQuery, DeleteQuery, FindOperator, InputRecord, Record, SelectQuery, Selector},
     Manager,
 };
+use futures::stream::BoxStream;
+use sqlx::{database::HasArguments, Database, Decode, Executor, Row, Type};
 
 macro_rules! impl_manager_for_db_executor {
     ($DB:path) => {
@@ -195,6 +195,23 @@ macro_rules! impl_manager_for_db_executor {
                         Ok(())
                     })
                 }
+            }
+
+            fn query<'q, 'o, Q: sqlx::Execute<'q, $DB> + 'q>(
+                self,
+                query: Q,
+            ) -> BoxStream<'o, Result<Record<$DB>, Self::Error>>
+            where
+                'm: 'o,
+                'q: 'o,
+            {
+                Box::pin(async_stream::try_stream! {
+                    for await result in self.fetch(query) {
+                        let row = result?;
+                        let record = Record::from_row(row);
+                        yield record
+                    }
+                })
             }
         }
     };

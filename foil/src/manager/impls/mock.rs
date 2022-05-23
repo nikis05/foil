@@ -1,7 +1,9 @@
 use std::str::FromStr;
 
 use crate::manager::impls::log::{Error, LogManager};
+use crate::manager::Record;
 use crate::Manager;
+use futures::stream::BoxStream;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{ConnectOptions, Executor, Sqlite, SqliteConnection};
 
@@ -111,5 +113,16 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
         'q: 'o,
     {
         record_and_delegate!(self, query, delete)
+    }
+
+    fn query<'q, 'o, Q: sqlx::Execute<'q, Sqlite> + 'q>(
+        self,
+        query: Q,
+    ) -> BoxStream<'o, Result<Record<Sqlite>, Self::Error>>
+    where
+        'm: 'o,
+        'q: 'o,
+    {
+        record_and_delegate!(self, query, query)
     }
 }

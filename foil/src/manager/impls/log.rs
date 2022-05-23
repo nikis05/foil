@@ -1,5 +1,8 @@
-use crate::{manager::display::WithBindParameters, Manager};
-use futures::{TryFutureExt, TryStreamExt};
+use crate::{
+    manager::{display::WithBindParameters, Record},
+    Manager,
+};
+use futures::{stream::BoxStream, TryFutureExt, TryStreamExt};
 use sqlx::Database;
 use thiserror::Error;
 
@@ -109,6 +112,21 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
         }
 
         Box::pin(self.inner.delete(query).map_err(Error::Inner))
+    }
+
+    fn query<'q, 'o, Q: sqlx::Execute<'q, DB> + 'q>(
+        mut self,
+        query: Q,
+    ) -> BoxStream<'o, Result<Record<DB>, Self::Error>>
+    where
+        'm: 'o,
+        'q: 'o,
+    {
+        if let Err(err) = write!(self.writer, "{}", query.sql()) {
+            return Box::pin(futures::stream::once(async move { Err(err.into()) }));
+        }
+
+        Box::pin(self.inner.query(query).map_err(Error::Inner))
     }
 }
 
