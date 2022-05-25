@@ -331,8 +331,11 @@ fn expand_from_field_expr(field_config: &FieldConfig) -> TokenStream {
 
     if field_config.ty != field_config.input_ty {
         let mut unwrapped = field_config.ty.clone();
+        let mut unwrapped_input = field_config.input_ty.clone();
+
         if unwrap_option(&mut unwrapped) {
-            if is_string(&unwrapped) || unwrap_vec(&unwrapped).is_some() {
+            if unwrap_option(&mut unwrapped_input) && unwrapped == unwrapped_input {
+            } else if is_string(&unwrapped) || unwrap_vec(&unwrapped).is_some() {
                 expr = quote! { #expr.as_ref().map(::std::convert::AsRef::as_ref)}
             } else {
                 expr = quote! { #expr.as_ref() };
