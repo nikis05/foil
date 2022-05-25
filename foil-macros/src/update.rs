@@ -153,12 +153,20 @@ fn expand_update(db: &Type, config: &Config) -> TokenStream {
     };
     let field_names = config.fields.iter().map(|field_config| &field_config.name);
     let field_exprs = config.fields.iter().map(|field_config| {
-        if field_config.input_ty == field_config.ty {
+        if field_config.ty == field_config.input_ty {
             quote! { val }
-        } else if unwrap_option(&mut field_config.input_ty.clone()) {
-            quote! { val.map(::std::borrow::ToOwned::to_owned) }
         } else {
-            quote!(::std::borrow::ToOwned::to_owned(val))
+            let mut unwrapped_input_ty = field_config.input_ty.clone();
+            if unwrap_option(&mut unwrapped_input_ty) {
+                let mut unwrapped_ty = field_config.ty.clone();
+                if unwrap_option(&mut unwrapped_ty) && unwrapped_ty == unwrapped_input_ty {
+                    quote! { val }
+                } else {
+                    quote! { val.map(::std::borrow::ToOwned::to_owned) }
+                }
+            } else {
+                quote! { ::std::borrow::ToOwned::to_owned(val)}
+            }
         }
     });
 

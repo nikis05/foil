@@ -229,10 +229,18 @@ fn expand_construct_field_expr(field_config: &FieldConfig) -> TokenStream {
 
     let owned_expr = if field_config.ty == field_config.input_ty {
         quote! { #alias }
-    } else if unwrap_option(&mut field_config.input_ty.clone()) {
-        quote! { #alias.map(::std::borrow::ToOwned::to_owned) }
     } else {
-        quote! { ::std::borrow::ToOwned::to_owned(#alias)}
+        let mut unwrapped_input_ty = field_config.input_ty.clone();
+        if unwrap_option(&mut unwrapped_input_ty) {
+            let mut unwrapped_ty = field_config.ty.clone();
+            if unwrap_option(&mut unwrapped_ty) && unwrapped_ty == unwrapped_input_ty {
+                quote! { #alias }
+            } else {
+                quote! { #alias.map(::std::borrow::ToOwned::to_owned) }
+            }
+        } else {
+            quote! { ::std::borrow::ToOwned::to_owned(#alias)}
+        }
     };
 
     if generated {
