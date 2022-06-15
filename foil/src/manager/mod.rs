@@ -32,11 +32,11 @@ pub trait Manager<'m, DB: Database>: Send {
         'm: 'o,
         'q: 'o;
 
-    fn count<'q, 'o>(self, query: CountQuery<'q, DB>) -> BoxFuture<'o, Result<u32, Self::Error>>
+    fn count<'q, 'o>(self, query: CountQuery<'q, DB>) -> BoxFuture<'o, Result<i64, Self::Error>>
     where
         'm: 'o,
         'q: 'o,
-        for<'a> u32: Type<DB> + Decode<'a, DB>,
+        for<'a> i64: Type<DB> + Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>;
 
     fn insert<'q, 'o>(self, query: InsertQuery<'q, DB>) -> BoxFuture<'o, Result<(), Self::Error>>

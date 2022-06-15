@@ -54,11 +54,11 @@ macro_rules! impl_manager_for_db_executor {
             fn count<'q, 'o>(
                 self,
                 query: crate::manager::CountQuery<'q, $DB>,
-            ) -> futures::future::BoxFuture<'o, sqlx::Result<u32>>
+            ) -> futures::future::BoxFuture<'o, sqlx::Result<i64>>
             where
                 'm: 'o,
                 'q: 'o,
-                for<'a> u32: Type<$DB> + Decode<'a, $DB>,
+                for<'a> i64: Type<$DB> + Decode<'a, $DB>,
                 for<'a> &'a str: sqlx::ColumnIndex<<$DB as sqlx::Database>::Row>,
             {
                 if query.selectors.is_empty() {
