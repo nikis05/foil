@@ -23,7 +23,17 @@ macro_rules! impl_manager_for_db_executor {
             {
                 if query.col_names.is_empty() {
                     Box::pin(futures::stream::once(async { Ok(Record::new()) }))
-                } else if query.selectors.is_empty() {
+                } else if query.selectors.is_empty()
+                    || query.selectors.iter().any(|selector| {
+                        selector.cols().any(|(_, find_operator)| {
+                            if let FindOperator::In(vals) = find_operator {
+                                vals.is_empty()
+                            } else {
+                                false
+                            }
+                        })
+                    })
+                {
                     Box::pin(futures::stream::empty())
                 } else {
                     Box::pin(async_stream::try_stream! {
@@ -61,7 +71,17 @@ macro_rules! impl_manager_for_db_executor {
                 for<'a> i64: Type<$DB> + Decode<'a, $DB>,
                 for<'a> &'a str: sqlx::ColumnIndex<<$DB as sqlx::Database>::Row>,
             {
-                if query.selectors.is_empty() {
+                if query.selectors.is_empty()
+                    || query.selectors.iter().any(|selector| {
+                        selector.cols().any(|(_, find_operator)| {
+                            if let FindOperator::In(vals) = find_operator {
+                                vals.is_empty()
+                            } else {
+                                false
+                            }
+                        })
+                    })
+                {
                     Box::pin(async { Ok(0) })
                 } else {
                     Box::pin(async {
@@ -151,7 +171,18 @@ macro_rules! impl_manager_for_db_executor {
                 'm: 'o,
                 'q: 'o,
             {
-                if query.new_values.is_empty() {
+                if query.selectors.is_empty()
+                    || query.selectors.iter().any(|selector| {
+                        selector.cols().any(|(_, find_operator)| {
+                            if let FindOperator::In(vals) = find_operator {
+                                vals.is_empty()
+                            } else {
+                                false
+                            }
+                        })
+                    })
+                    || query.new_values.is_empty()
+                {
                     Box::pin(async { Ok(()) })
                 } else {
                     Box::pin(async {
@@ -174,7 +205,17 @@ macro_rules! impl_manager_for_db_executor {
                 'm: 'o,
                 'q: 'o,
             {
-                if query.selectors.is_empty() {
+                if query.selectors.is_empty()
+                    || query.selectors.iter().any(|selector| {
+                        selector.cols().any(|(_, find_operator)| {
+                            if let FindOperator::In(vals) = find_operator {
+                                vals.is_empty()
+                            } else {
+                                false
+                            }
+                        })
+                    })
+                {
                     Box::pin(async { Ok(()) })
                 } else {
                     Box::pin(async {
