@@ -40,11 +40,11 @@ impl<'m, DB: Database + WithBindParameters, M: Manager<'m, DB>, W: std::fmt::Wri
     fn count<'q, 'o>(
         mut self,
         query: crate::manager::CountQuery<'q, DB>,
-    ) -> futures::future::BoxFuture<'o, Result<u32, Self::Error>>
+    ) -> futures::future::BoxFuture<'o, Result<i64, Self::Error>>
     where
         'm: 'o,
         'q: 'o,
-        for<'a> u32: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
+        for<'a> i64: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as Database>::Row>,
     {
         if let Err(err) = write!(self.writer, "{}", query) {

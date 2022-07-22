@@ -94,9 +94,9 @@ pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
     fn count<'m: 'o, 'q: 'o, 'o, M: Manager<'m, DB>>(
         manager: M,
         selectors: Vec<Self::Selector<'q>>,
-    ) -> BoxFuture<'o, Result<u32, M::Error>>
+    ) -> BoxFuture<'o, Result<i64, M::Error>>
     where
-        for<'a> u32: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
+        for<'a> i64: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
     {
         manager.count(CountQuery {
@@ -113,7 +113,7 @@ pub trait Entity<DB: Database>: FromRecord<DB> + 'static {
         selectors: Vec<Self::Selector<'q>>,
     ) -> BoxFuture<'o, Result<bool, M::Error>>
     where
-        for<'a> u32: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
+        for<'a> i64: sqlx::Type<DB> + sqlx::Decode<'a, DB>,
         for<'a> &'a str: sqlx::ColumnIndex<<DB as sqlx::Database>::Row>,
     {
         Box::pin(Self::count(manager, selectors).map_ok(|count| count != 0))

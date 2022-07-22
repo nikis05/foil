@@ -61,11 +61,11 @@ impl<'m> Manager<'m, Sqlite> for &'m mut MockManager {
     fn count<'q, 'o>(
         self,
         query: crate::manager::CountQuery<'q, Sqlite>,
-    ) -> futures::future::BoxFuture<'o, Result<u32, Self::Error>>
+    ) -> futures::future::BoxFuture<'o, Result<i64, Self::Error>>
     where
         'm: 'o,
         'q: 'o,
-        for<'a> u32: sqlx::Type<Sqlite> + sqlx::Decode<'a, Sqlite>,
+        for<'a> i64: sqlx::Type<Sqlite> + sqlx::Decode<'a, Sqlite>,
         for<'a> &'a str: sqlx::ColumnIndex<<Sqlite as sqlx::Database>::Row>,
     {
         record_and_delegate!(self, query, count)
