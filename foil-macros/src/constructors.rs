@@ -6,11 +6,11 @@ use syn::{
     parse2,
     punctuated::Punctuated,
     token::{Brace, Paren},
-    Error, Expr, Ident, Result, Token,
+    Error, Expr, Ident, Path, Result, Token,
 };
 
 pub struct SelectorInput {
-    ident: Ident,
+    path: Path,
     #[allow(dead_code)]
     brace: Brace,
     fields: Punctuated<SelectorField, Token![,]>,
@@ -22,7 +22,7 @@ impl Parse for SelectorInput {
         let content;
 
         Ok(Self {
-            ident: input.parse()?,
+            path: input.parse()?,
             brace: braced!(content in input),
             fields: content.parse_terminated(SelectorField::parse)?,
         })
@@ -207,7 +207,7 @@ impl Parse for InValues {
 }
 
 pub fn expand_selector(input: SelectorInput) -> TokenStream {
-    let selector_ident = input.ident;
+    let selector_path = input.path;
     let field_names = input.fields.iter().map(|field| &field.name);
     let field_values = input.fields.iter().map(|field| {
         let field_name = &field.name;
@@ -277,7 +277,7 @@ pub fn expand_selector(input: SelectorInput) -> TokenStream {
     });
 
     quote! {
-        #selector_ident {
+        #selector_path {
             #(
                 #field_names: ::foil::entity::Field::Set(#field_values),
             )*
@@ -287,7 +287,7 @@ pub fn expand_selector(input: SelectorInput) -> TokenStream {
 }
 
 pub struct PatchInput {
-    ident: Ident,
+    path: Path,
     #[allow(dead_code)]
     brace: Brace,
     fields: Punctuated<PatchField, Token![,]>,
@@ -299,7 +299,7 @@ impl Parse for PatchInput {
         let content;
 
         Ok(Self {
-            ident: input.parse()?,
+            path: input.parse()?,
             brace: braced!(content in input),
             fields: content.parse_terminated(PatchField::parse)?,
         })
@@ -343,7 +343,7 @@ impl Parse for PatchFieldValue {
 }
 
 pub fn expand_patch(input: PatchInput, opt: bool) -> TokenStream {
-    let patch_ident = input.ident;
+    let patch_path = input.path;
     let field_names = input.fields.iter().map(|field| &field.name);
     let field_values = input.fields.iter().map(|field| {
         if let PatchFieldValue::Expr { colon: _, expr } = &field.value {
@@ -356,7 +356,7 @@ pub fn expand_patch(input: PatchInput, opt: bool) -> TokenStream {
 
     if opt {
         quote! {
-            #patch_ident {
+            #patch_path {
                 #(
                     #field_names: if let ::std::option::Option::Some(val) = #field_values {
                         ::foil::entity::Field::Set(val)
@@ -369,7 +369,7 @@ pub fn expand_patch(input: PatchInput, opt: bool) -> TokenStream {
         }
     } else {
         quote! {
-            #patch_ident {
+            #patch_path {
                 #(
                     #field_names: ::foil::entity::Field::Set(#field_values),
                 )*
