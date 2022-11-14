@@ -31,11 +31,11 @@ impl<DB: Database + WithBindParameters> Display for SelectQuery<'_, DB> {
         }
 
         if let Some(offset) = self.offset {
-            write!(f, " SKIP {}", offset)?;
+            write!(f, " OFFSET {}", offset)?;
         }
 
         if let Some(limit) = self.limit {
-            write!(f, " TAKE {}", limit)?;
+            write!(f, " LIMIT {}", limit)?;
         }
 
         Ok(())
