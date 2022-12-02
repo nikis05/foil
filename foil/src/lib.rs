@@ -12,3 +12,5 @@ pub use manager::Manager;
 pub mod entity;
 pub mod manager;
 pub use foil_macros::{patch, patch_opt, selector, Create, Delete, Entity, Update, Value};
+
+println!("test");
