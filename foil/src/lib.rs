@@ -1,4 +1,3 @@
-#![feature(generic_associated_types)]
 #![allow(unstable_name_collisions)]
 #![warn(clippy::pedantic)]
 #![forbid(unused_must_use)]
