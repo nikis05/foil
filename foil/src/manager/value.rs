@@ -426,7 +426,6 @@ impl_value!(
 #[cfg(feature = "postgres")]
 impl_value_for_pg_array!(
     bool,
-    u32,
     i8,
     i16,
     i32,
@@ -534,10 +533,7 @@ impl_value!(sqlx::types::mac_address::MacAddress);
 impl_value_for_pg_array!(sqlx::types::mac_address::MacAddress);
 
 #[cfg(feature = "uuid")]
-impl_value!(
-    sqlx::types::uuid::Uuid,
-    sqlx::types::uuid::adapter::Hyphenated
-);
+impl_value!(sqlx::types::uuid::Uuid);
 
 #[cfg(all(feature = "uuid", feature = "postgres"))]
 impl_value_for_pg_array!(sqlx::types::uuid::Uuid);

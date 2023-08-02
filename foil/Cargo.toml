@@ -1,6 +1,6 @@
 [package]
 name = "foil"
-version = "0.1.53"
+version = "0.1.54"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,7 +13,7 @@ futures = "0.3.17"
 itertools = "0.10.3"
 serde_json = { version = "1.0.73", optional = true, default-features = false }
 serde = { version = "1.0.132", optional = true, default-features = false }
-sqlx = { version = "=0.5.13", default-features = false }
+sqlx = { version = "=0.7.1", default-features = false }
 thiserror = "1.0.30"
 tokio = { version = "1.15.0", optional = true, features = [
     "test-util",
@@ -33,16 +33,15 @@ runtime-tokio-rustls = ["sqlx/runtime-tokio-rustls"]
 
 all = ["all-databases", "all-types", "all-managers"]
 
-all-databases = ["mysql", "mssql", "postgres", "sqlite", "any"]
+all-databases = ["mysql", "postgres", "sqlite", "any"]
 mysql = ["sqlx/mysql", "foil-macros/mysql"]
-mssql = ["sqlx/mssql", "foil-macros/mssql"]
 postgres = ["sqlx/postgres", "foil-macros/postgres"]
 sqlite = ["sqlx/sqlite", "foil-macros/sqlite"]
 any = ["sqlx/any", "foil-macros/any"]
 
 all-types = [
     "bigdecimal",
-    "decimal",
+    "rust_decimal",
     "json",
     "time",
     "chrono",
@@ -50,11 +49,9 @@ all-types = [
     "mac_address",
     "uuid",
     "bit-vec",
-    "bstr",
-    "git2",
 ]
 bigdecimal = ["sqlx/bigdecimal"]
-decimal = ["sqlx/decimal"]
+rust_decimal = ["sqlx/rust_decimal"]
 json = ["sqlx/json", "serde", "serde_json"]
 time = ["sqlx/time", "time-rs"]
 chrono = ["sqlx/chrono", "chrono-rs"]
@@ -62,8 +59,6 @@ ipnetwork = ["sqlx/ipnetwork"]
 mac_address = ["sqlx/mac_address"]
 uuid = ["sqlx/uuid"]
 bit-vec = ["sqlx/bit-vec"]
-bstr = ["sqlx/bstr"]
-git2 = ["sqlx/git2"]
 
 all-managers = ["test-manager", "log-manager"]
 test-manager = ["sqlite"]

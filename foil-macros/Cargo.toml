@@ -1,6 +1,6 @@
 [package]
 name = "foil-macros"
-version = "0.1.53"
+version = "0.1.54"
 edition = "2021"
 
 [lib]
@@ -15,9 +15,8 @@ quote = "1.0.15"
 syn = { version = "1.0.86", features = ["extra-traits"] }
 
 [features]
-all-databases = ["mysql", "mssql", "postgres", "sqlite", "any"]
+all-databases = ["mysql", "postgres", "sqlite", "any"]
 mysql = []
-mssql = []
 postgres = []
 sqlite = []
 any = []
